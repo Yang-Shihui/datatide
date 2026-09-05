@@ -36,7 +36,7 @@ export function Reports({ user, notify, wrap }) {
 
   const showContent = wrap(async (runId) => {
     const res = await fetch(`/api/report-runs/${runId}/content`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("bi-agent-token")}` },
+      headers: { Authorization: `Bearer ${localStorage.getItem("datatide-token")}` },
     });
     const text = await res.text();
     setContent({ runId, html: mdToHtml(text) });

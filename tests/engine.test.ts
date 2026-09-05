@@ -18,7 +18,7 @@ let meta: MetaStore;
 let dir: string;
 
 beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), "bi-agent-test-"));
+  dir = mkdtempSync(join(tmpdir(), "datatide-test-"));
   writeFileSync(join(dir, "sales.csv"), CSV);
   engine = await Engine.create(":memory:");
   meta = new MetaStore(":memory:");
@@ -86,7 +86,7 @@ describe("MetaStore — 数据集注册表", () => {
 });
 
 // Postgres 数据源测试：需要真实可达的 PG（CI 用 services 提供）
-const PG_DSN = process.env.BI_AGENT_TEST_PG_DSN;
+const PG_DSN = process.env.DATATIDE_TEST_PG_DSN;
 describe.skipIf(!PG_DSN)("Engine — Postgres 数据集", () => {
   it("ATTACH 只读挂载并能查询", async () => {
     const e = await Engine.create(":memory:");

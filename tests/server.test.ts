@@ -16,7 +16,7 @@ const CSV = `date,region,amount
 `;
 
 beforeAll(async () => {
-  root = mkdtempSync(join(tmpdir(), "bi-agent-server-"));
+  root = mkdtempSync(join(tmpdir(), "datatide-server-"));
   writeFileSync(join(root, "sales.csv"), CSV);
   const { app } = await createServer({
     dataDir: join(root, "data"),

@@ -6,7 +6,7 @@ import time
 from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:8200"
-OUT = "/tmp/bi-agent-shots"
+OUT = "/tmp/datatide-shots"
 CHROME = "/usr/bin/google-chrome"
 
 with sync_playwright() as p:

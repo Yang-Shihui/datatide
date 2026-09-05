@@ -4,7 +4,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import type { Engine } from "../engine/engine.ts";
 import type { MetaStore } from "../store/meta.ts";
 import type { DatasetRegistry } from "../agent/registry.ts";
-import { createBiAgent } from "../agent/agent.ts";
+import { createAnalysisSession } from "../agent/agent.ts";
 import { runTurn } from "../agent/runner.ts";
 
 export interface SchedulerDeps {
@@ -70,7 +70,7 @@ export class ReportScheduler {
         username: config.username,
         datasets: [config.dataset_name],
       };
-      const agent = await createBiAgent({
+      const agent = await createAnalysisSession({
         scope,
         engine: this.deps.engine,
         registry: this.deps.registry,

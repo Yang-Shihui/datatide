@@ -38,8 +38,8 @@ export default function App() {
 
   useEffect(() => {
     const onUnauthorized = () => setUser(null);
-    window.addEventListener("bi-agent-unauthorized", onUnauthorized);
-    return () => window.removeEventListener("bi-agent-unauthorized", onUnauthorized);
+    window.addEventListener("datatide-unauthorized", onUnauthorized);
+    return () => window.removeEventListener("datatide-unauthorized", onUnauthorized);
   }, []);
 
   const switchTab = (id) => {
@@ -54,7 +54,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          bi<span className="dot">·</span>agent <small>数据分析控制台</small>
+          datatide<span className="dot">·</span>数据分析控制台
         </div>
         <nav className="nav">
           {TABS.map(([id, label]) => (
@@ -108,7 +108,7 @@ function Login({ onLogin, notify }) {
     <div className="login-wrap">
       <form className="panel login-card" onSubmit={submit}>
         <h1>
-          bi<span style={{ color: "var(--accent)" }}>·</span>agent
+          datatide<span style={{ color: "var(--accent)" }}>·</span>
         </h1>
         <div className="sub">自托管对话式 BI · 数据不出内网</div>
         <label>用户名</label>

@@ -2,7 +2,7 @@ import * as readline from "node:readline";
 import { Engine } from "./engine/engine.ts";
 import { MetaStore } from "./store/meta.ts";
 import { DatasetRegistry } from "./agent/registry.ts";
-import { createBiAgent, type BiAgent } from "./agent/agent.ts";
+import { createAnalysisSession, type AnalysisSession } from "./agent/agent.ts";
 import type { UserScope } from "./agent/tools.ts";
 
 /**
@@ -16,15 +16,15 @@ async function main() {
   await registry.ensureRegistered();
 
   const datasets = meta.listDatasets().map((d) => d.name);
-  const scope: UserScope = { username: process.env.BI_AGENT_USER ?? "cli", datasets };
-  const agent = await createBiAgent({
+  const scope: UserScope = { username: process.env.DATATIDE_USER ?? "cli", datasets };
+  const agent = await createAnalysisSession({
     scope,
     engine,
     registry,
-    modelSpec: process.env.BI_AGENT_MODEL,
+    modelSpec: process.env.DATATIDE_MODEL,
   });
 
-  console.log(`bi-agent CLI — 数据集: ${datasets.join(", ") || "（无，先在 data/ 放入 CSV 并注册）"}`);
+  console.log(`datatide CLI — 数据集: ${datasets.join(", ") || "（无，先在 data/ 放入 CSV 并注册）"}`);
 
   const singleShot = process.argv.slice(2).join(" ").trim();
   if (singleShot) {
@@ -56,7 +56,7 @@ async function main() {
   });
 }
 
-async function runTurn(agent: BiAgent, question: string) {
+async function runTurn(agent: AnalysisSession, question: string) {
   const sub = attachLogging(agent);
   try {
     await agent.session.prompt(question, { streamingBehavior: "steer" });
@@ -66,7 +66,7 @@ async function runTurn(agent: BiAgent, question: string) {
   agent.charts.length = 0; // CLI does not render charts
 }
 
-function attachLogging(agent: BiAgent): () => void {
+function attachLogging(agent: AnalysisSession): () => void {
   const sub = agent.session.subscribe((event) => {
     switch (event.type) {
       case "message_update": {

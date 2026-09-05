@@ -5,12 +5,12 @@ import type { Request, Response } from "express";
 import { Engine } from "./engine/engine.ts";
 import { MetaStore } from "./store/meta.ts";
 import { DatasetRegistry } from "./agent/registry.ts";
-import { createBiAgent, type BiAgent } from "./agent/agent.ts";
+import { createAnalysisSession, type AnalysisSession } from "./agent/agent.ts";
 import { runTurn, type TurnEvent } from "./agent/runner.ts";
 import { AuthService } from "./auth.ts";
 import { ReportScheduler } from "./reports/scheduler.ts";
 
-const PORT = Number(process.env.BI_AGENT_PORT ?? 8200);
+const PORT = Number(process.env.DATATIDE_PORT ?? 8200);
 const ROW_CAP = 200;
 const MAX_UPLOAD_BYTES = 64 * 1024 * 1024;
 
@@ -21,21 +21,21 @@ interface Ctx {
   auth: AuthService;
   scheduler: ReportScheduler;
   /** one agent per chat session; created lazily, disposed on eviction */
-  agents: Map<number, BiAgent>;
+  agents: Map<number, AnalysisSession>;
   busy: Set<number>;
 }
 
 async function main() {
   const { app } = await createServer();
   app.listen(PORT, () => {
-    console.log(`bi-agent server listening on http://127.0.0.1:${PORT}`);
+    console.log(`datatide server listening on http://127.0.0.1:${PORT}`);
   });
 }
 
 export async function createServer(opts: { staticDir?: string; reportsDir?: string; dataDir?: string } = {}) {
-  const dataDir = resolve(opts.dataDir ?? process.env.BI_AGENT_DATA_DIR ?? "data");
-  const reportsDir = resolve(opts.reportsDir ?? process.env.BI_AGENT_REPORTS_DIR ?? "reports");
-  const staticDir = resolve(opts.staticDir ?? process.env.BI_AGENT_STATIC_DIR ?? "static");
+  const dataDir = resolve(opts.dataDir ?? process.env.DATATIDE_DATA_DIR ?? "data");
+  const reportsDir = resolve(opts.reportsDir ?? process.env.DATATIDE_REPORTS_DIR ?? "reports");
+  const staticDir = resolve(opts.staticDir ?? process.env.DATATIDE_STATIC_DIR ?? "static");
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(reportsDir, { recursive: true });
 
@@ -49,14 +49,14 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     engine,
     registry,
     reportsDir,
-    modelSpec: process.env.BI_AGENT_MODEL,
+    modelSpec: process.env.DATATIDE_MODEL,
   });
   scheduler.start();
 
   // bootstrap admin from env on first boot (dev convenience, documented)
-  if (meta.listUsers().length === 0 && process.env.BI_AGENT_ADMIN_PASSWORD) {
-    auth.register("admin", process.env.BI_AGENT_ADMIN_PASSWORD, "admin");
-    console.log("[init] 已创建管理员 admin（密码来自 BI_AGENT_ADMIN_PASSWORD）");
+  if (meta.listUsers().length === 0 && process.env.DATATIDE_ADMIN_PASSWORD) {
+    auth.register("admin", process.env.DATATIDE_ADMIN_PASSWORD, "admin");
+    console.log("[init] 已创建管理员 admin（密码来自 DATATIDE_ADMIN_PASSWORD）");
   }
 
   const ctx: Ctx = { meta, engine, registry, auth, scheduler, agents: new Map(), busy: new Set() };
@@ -228,17 +228,17 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
 
 // ---- chat internals ----
 
-async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): Promise<BiAgent | undefined> {
+async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): Promise<AnalysisSession | undefined> {
   const existing = ctx.agents.get(sessionId);
   if (existing) return existing;
   const user = ctx.meta.getUser(username)!;
   const datasets = ctx.meta.datasetsForUser(user);
   if (datasets.length === 0) return undefined;
-  const agent = await createBiAgent({
+  const agent = await createAnalysisSession({
     scope: { username, datasets },
     engine: ctx.engine,
     registry: ctx.registry,
-    modelSpec: process.env.BI_AGENT_MODEL,
+    modelSpec: process.env.DATATIDE_MODEL,
   });
   ctx.agents.set(sessionId, agent);
   if (ctx.agents.size > 32) {
@@ -252,7 +252,7 @@ async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): 
   return agent;
 }
 
-async function startChat(ctx: Ctx, _req: Request, res: Response, sessionId: number, agent: BiAgent, message: string) {
+async function startChat(ctx: Ctx, _req: Request, res: Response, sessionId: number, agent: AnalysisSession, message: string) {
   ctx.busy.add(sessionId);
   ctx.meta.addMessage(sessionId, "user", message);
 

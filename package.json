@@ -1,5 +1,5 @@
 {
-  "name": "bi-agent",
+  "name": "datatide",
   "version": "0.1.0",
   "description": "Self-hosted conversational BI platform built on the Pi coding agent SDK",
   "type": "module",
@@ -10,7 +10,7 @@
     "server": "tsx src/server.ts",
     "cli": "tsx src/cli.ts",
     "test": "vitest run",
-    "test:live": "BI_AGENT_LIVE=1 vitest run tests/live",
+    "test:live": "DATATIDE_LIVE=1 vitest run tests/live",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

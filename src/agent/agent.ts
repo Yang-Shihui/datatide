@@ -18,15 +18,15 @@ const stripCwdLine: ExtensionFactory = (pi) => {
   });
 };
 
-export interface BiAgentOptions {
+export interface AnalysisSessionOptions {
   scope: UserScope;
   engine: Engine;
   registry: DatasetRegistry;
-  /** "provider/model-id"; defaults to BI_AGENT_MODEL env or the configured default model */
+  /** "provider/model-id"; defaults to DATATIDE_MODEL env or the configured default model */
   modelSpec?: string;
 }
 
-export interface BiAgent {
+export interface AnalysisSession {
   session: AgentSession;
   /** drained by callers (SSE server) after each run; charts generated this turn */
   charts: ToolContext["charts"];
@@ -38,7 +38,7 @@ export interface BiAgent {
  * analyst persona in the system prompt, cwd line stripped, no built-in
  * coding tools. One instance per conversation.
  */
-export async function createBiAgent(options: BiAgentOptions): Promise<BiAgent> {
+export async function createAnalysisSession(options: AnalysisSessionOptions): Promise<AnalysisSession> {
   const { scope, engine, registry } = options;
 
   const charts: ToolContext["charts"] = [];
@@ -82,7 +82,7 @@ export async function createBiAgent(options: BiAgentOptions): Promise<BiAgent> {
 async function pickModel(modelRuntime: ModelRuntime, spec: string) {
   const [provider, ...rest] = spec.split("/");
   const id = rest.join("/");
-  if (!provider || !id) throw new Error(`BI_AGENT_MODEL 格式应为 provider/model-id，收到: ${spec}`);
+  if (!provider || !id) throw new Error(`DATATIDE_MODEL 格式应为 provider/model-id，收到: ${spec}`);
   const model = modelRuntime.getModel(provider, id);
   if (!model) {
     const available = await modelRuntime.getAvailable();

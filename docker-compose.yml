@@ -1,9 +1,9 @@
 services:
-  bi-agent:
+  datatide:
     build: .
-    container_name: bi-agent
+    container_name: datatide
     ports:
-      - "${BI_AGENT_PORT:-8200}:8200"
+      - "${DATATIDE_PORT:-8200}:8200"
     env_file:
       - .env
     volumes:

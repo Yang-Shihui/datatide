@@ -1,4 +1,4 @@
-import type { BiAgent } from "./agent.ts";
+import type { AnalysisSession } from "./agent.ts";
 
 export type TurnEvent =
   | { type: "text"; delta: string }
@@ -20,7 +20,7 @@ export interface TurnOutcome {
  * one place (including the willRetry false-positive guard).
  */
 export async function runTurn(
-  agent: BiAgent,
+  agent: AnalysisSession,
   question: string,
   onEvent: (event: TurnEvent) => void,
 ): Promise<TurnOutcome> {

@@ -1,4 +1,4 @@
-# bi-agent
+# datatide
 
 自托管对话式 BI 平台：基于 [Pi coding agent SDK](https://github.com/badlogic/pi-mono) 构建的数据分析 agent，用自然语言问数、归因、出图、定时生成分析报告。**数据与模型调用都发生在你自己的机器/内网，不出第三方。**
 
@@ -23,16 +23,16 @@
 npm install
 cd webui && npm ci && npm run build && cd ..   # 构建控制台
 npm run gen-data && npx tsx scripts/register-demo.ts   # 演示数据集（含归因故事线）
-BI_AGENT_MODEL=provider/model-id BI_AGENT_ADMIN_PASSWORD=secret npm run server
+DATATIDE_MODEL=provider/model-id DATATIDE_ADMIN_PASSWORD=secret npm run server
 # 打开 http://127.0.0.1:8200 ，admin / secret 登录
 ```
 
-模型配置走 Pi SDK 约定：`~/.pi/agent/models.json`（OpenAI 兼容格式，支持 `$ENV_VAR` 注入 key），`BI_AGENT_MODEL` 选 `provider/model-id`。也可以用 CLI 直接对话：`BI_AGENT_MODEL=... npm run cli`。
+模型配置走 Pi SDK 约定：`~/.pi/agent/models.json`（OpenAI 兼容格式，支持 `$ENV_VAR` 注入 key），`DATATIDE_MODEL` 选 `provider/model-id`。也可以用 CLI 直接对话：`DATATIDE_MODEL=... npm run cli`。
 
 ### Docker
 
 ```bash
-cp .env.example .env   # 填 BI_AGENT_MODEL 与管理员密码
+cp .env.example .env   # 填 DATATIDE_MODEL 与管理员密码
 docker compose up -d --build
 ```
 
@@ -67,7 +67,7 @@ v0.1 的守卫是词法级的，不是完整 SQL 解析器。已覆盖：多语�
 
 ```bash
 npm test          # hermetic 测试（守卫/引擎/服务端），不需要真实模型
-npm run test:live # live 测试，打真实模型端到端（BI_AGENT_LIVE=1 门控）
+npm run test:live # live 测试，打真实模型端到端（DATATIDE_LIVE=1 门控）
 npm run typecheck
 cd webui && npm run dev   # 控制台开发（代理到 :8200）
 ```

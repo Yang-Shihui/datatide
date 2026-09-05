@@ -35,7 +35,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
         env:
-          BI_AGENT_TEST_PG_DSN: host=127.0.0.1 port=15432 user=test password=test dbname=testdb
+          DATATIDE_TEST_PG_DSN: host=127.0.0.1 port=15432 user=test password=test dbname=testdb
 
   ui:
     runs-on: ubuntu-latest

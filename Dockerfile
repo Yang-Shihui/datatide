@@ -19,9 +19,9 @@ RUN npm ci --omit=dev
 FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production \
-    BI_AGENT_STATIC_DIR=/app/webui/dist \
-    BI_AGENT_DATA_DIR=/app/data \
-    BI_AGENT_REPORTS_DIR=/app/reports
+    DATATIDE_STATIC_DIR=/app/webui/dist \
+    DATATIDE_DATA_DIR=/app/data \
+    DATATIDE_REPORTS_DIR=/app/reports
 COPY package.json ./
 COPY src ./src
 COPY prompts ./prompts

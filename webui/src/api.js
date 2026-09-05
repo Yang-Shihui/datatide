@@ -1,4 +1,4 @@
-const TOKEN_KEY = "bi-agent-token";
+const TOKEN_KEY = "datatide-token";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
@@ -7,7 +7,7 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 async function handle(res) {
   if (res.status === 401) {
     clearToken();
-    window.dispatchEvent(new CustomEvent("bi-agent-unauthorized"));
+    window.dispatchEvent(new CustomEvent("datatide-unauthorized"));
     throw new Error("未登录或会话已过期");
   }
   const data = await res.json().catch(() => ({}));

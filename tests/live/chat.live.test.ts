@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "../../src/server.ts";
 
-// Live end-to-end: real model gateway required (BI_AGENT_LIVE=1 + models.json).
-const LIVE = process.env.BI_AGENT_LIVE === "1";
+// Live end-to-end: real model gateway required (DATATIDE_LIVE=1 + models.json).
+const LIVE = process.env.DATATIDE_LIVE === "1";
 
 describe.skipIf(!LIVE)("SSE chat end-to-end", () => {
   let baseUrl: string;
@@ -13,7 +13,7 @@ describe.skipIf(!LIVE)("SSE chat end-to-end", () => {
   let cleanup: () => void;
 
   beforeAll(async () => {
-    const root = mkdtempSync(join(tmpdir(), "bi-agent-live-"));
+    const root = mkdtempSync(join(tmpdir(), "datatide-live-"));
     const CSV = readFileSync(new URL("../../data/datasets/sales_demo.csv", import.meta.url), "utf8");
     const { app } = await createServer({ dataDir: join(root, "data"), reportsDir: join(root, "reports") });
     cleanup = await new Promise<() => void>((res) => {
