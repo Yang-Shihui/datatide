@@ -9,8 +9,12 @@
 - **对话分析**：agent 理解你的问题 → 查 schema → 写 SQL → 多步归因（同比/环比/量价拆解）→ 给出带口径的结论，过程流式可见
 - **图表**：分析结论自动配图（柱/线/饼/散点，ECharts 暗色主题）
 - **数据源**：CSV / Parquet 文件直接上传，Postgres 只读挂载（经 DuckDB postgres_scanner ATTACH），统一一条 SQL 工具链
-- **多用户权限**：数据集级授权，prompt 注入 + 工具层双重强制
+- **多用户权限**：数据集级授权，prompt 注入 + 工具层双重强制；admin 设置页可查看已加载技能与 MCP server 状态
 - **定时归因报告**：cron 调度 agent 无头生成 markdown 报告（如"每周一自动分析上周销售异动"）
+- **结果导出**：图表下载 PNG（悬停图表）、每张结果表导出 CSV（带 BOM，Excel 直接打开）、报告下载 .md
+- **分析技能（Skills）**：内置 4 个中文数据分析方法论（归因拆解/口径核对/可视化选型/SQL 方言）+ Excel 分析，agent 按问题自动加载；支持 `DATATIDE_SKILLS_DIR` 挂载外部技能目录（标准 SKILL.md 格式，兼容 Claude Code skills）
+- **MCP 外部工具**：`DATATIDE_MCP_CONFIG` 指向标准 mcpServers JSON（兼容 Claude/Cursor 配置直接拷贝），单一网关工具（list/call）+ lazy 连接 + 输出截断，不撑爆上下文；例如接 `@pydantic/mcp-run-python` 即可在 Pyodide 沙箱跑 pandas 做统计检验
+- **Excel 数据源**：上传 .xlsx 直接查询（DuckDB excel 扩展，取第一个 sheet）
 - **只读安全守卫**：agent 生成的 SQL 经守卫层才能执行——仅允许单条 SELECT/WITH、禁 DDL/DML/PRAGMA/ATTACH、禁文件读取表函数、白名单外的数据对象一律拒绝、行数上限 + 超时中断
 
 ## 快速开始
@@ -44,8 +48,8 @@ docker compose up -d --build
 浏览器 ── SSE ── Express (auth + 会话持久化 + 报告调度)
                     │
                     ▼
-            Pi Agent SDK（系统提示词 = 分析师人设 + 用户权限 + 数据集快照）
-                    │  工具白名单：dataset_info / query_sql / make_chart
+            Pi Agent SDK（系统提示词 = 分析师人设 + 用户权限 + 数据集快照 + 技能清单）
+                    │  工具：dataset_info / query_sql / make_chart / use_skill / mcp
                     ▼
              只读 SQL 守卫（词法级白名单 + 行数上限 + 超时中断）
                     │

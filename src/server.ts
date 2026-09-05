@@ -195,6 +195,17 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     res.json(meta.listMessages(id));
   }));
 
+  // ---- settings（admin 只读） ----
+  app.get("/api/settings", (req, res) => adminOnly(req, res, () => {
+    res.json({
+      skills: ctx.skills.list().map((s) => ({ name: s.name, description: s.description, source: s.source })),
+      mcp: {
+        servers: ctx.mcp?.serversInfo() ?? [],
+        configPath: process.env.DATATIDE_MCP_CONFIG ?? "（未配置）",
+      },
+    });
+  }));
+
   // ---- reports ----
   app.get("/api/reports", (req, res) => {
     const user = currentUser(req)!;

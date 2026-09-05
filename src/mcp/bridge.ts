@@ -181,6 +181,15 @@ export class McpBridge {
   }
 
   /** 网关工具的 TypeBox 入参（延迟到注册时构建，避免循环依赖） */
+  /** 设置页展示用：server 清单与已索引工具数 */
+  serversInfo(): { name: string; description?: string; toolCount: number }[] {
+    return Object.entries(this.servers).map(([name, cfg]) => ({
+      name,
+      description: cfg.description,
+      toolCount: [...this.toolIndex.values()].filter((t) => t.server === name).length,
+    }));
+  }
+
   statusLine(): string {
     const n = Object.keys(this.servers).length;
     const t = this.toolIndex.size;
