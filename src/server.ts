@@ -101,6 +101,11 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
   // ---- everything below requires auth ----
   app.use("/api", auth.middleware());
 
+  app.get("/api/skills", (req, res) => {
+    void currentUser(req);
+    res.json(ctx.skills.list().map((s) => ({ name: s.name, description: s.description })));
+  });
+
   app.get("/api/me", (req, res) => {
     const user = currentUser(req)!;
     res.json({ username: user.username, role: user.role, datasets: meta.datasetsForUser(user) });
@@ -171,16 +176,30 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
   // ---- chat ----
   app.post("/api/chat", (req, res) => guard(res, async () => {
     const user = currentUser(req)!;
-    const { session_id: sessionId, message } = req.body as { session_id?: number; message: string };
+    const { session_id: sessionId, message, skill: skillName } = req.body as {
+      session_id?: number; message: string; skill?: string;
+    };
     if (!message?.trim()) return res.status(400).json({ error: "message 不能为空" });
+    let skillBody: string | undefined;
+    if (skillName) {
+      const skill = ctx.skills.get(skillName);
+      if (!skill) {
+        return res.status(400).json({
+          error: `技能 ${skillName} 不存在`,
+          skills: ctx.skills.list().map((s) => s.name),
+        });
+      }
+      skillBody = ctx.skills.loadBody(skillName);
+    }
 
+    if (meta.datasetsForUser(user).length === 0) return res.status(400).json({ error: "当前用户没有被授权任何数据集" });
     const id = sessionId ?? meta.createChatSession(user.id, message.slice(0, 30));
     if (meta.chatSessionOwner(id) !== user.id) return res.status(403).json({ error: "会话不存在" });
     if (ctx.busy.has(id)) return res.status(409).json({ error: "会话正在处理中，请稍候" });
 
     const agent = await getOrCreateAgent(ctx, user.username, id);
     if (!agent) return res.status(400).json({ error: "当前用户没有被授权任何数据集" });
-    await startChat(ctx, req, res, id, agent, message);
+    await startChat(ctx, req, res, id, agent, message, skillBody ? { name: skillName!, body: skillBody } : undefined);
   }));
 
   app.get("/api/sessions", (req, res) => {
@@ -193,6 +212,23 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     const id = Number(req.params.id);
     if (meta.chatSessionOwner(id) !== user.id) return res.status(403).json({ error: "会话不存在" });
     res.json(meta.listMessages(id));
+  }));
+
+  app.post("/api/sessions/:id/truncate", (req, res) => guard(res, () => {
+    const user = currentUser(req)!;
+    const id = Number(req.params.id);
+    if (meta.chatSessionOwner(id) !== user.id) return res.status(403).json({ error: "会话不存在" });
+    if (ctx.busy.has(id)) return res.status(409).json({ error: "会话正在处理中，无法回退" });
+    const messageId = Number((req.body as { message_id?: number }).message_id);
+    if (!Number.isInteger(messageId)) return res.status(400).json({ error: "message_id 不能为空" });
+    const removed = meta.truncateMessagesFrom(id, messageId);
+    // 内存 agent 一并销毁：被截断的对话不能残留在上下文里
+    const agent = ctx.agents.get(id);
+    if (agent) {
+      agent.dispose();
+      ctx.agents.delete(id);
+    }
+    res.json({ ok: true, removed });
   }));
 
   // ---- settings（admin 只读） ----
@@ -278,9 +314,22 @@ async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): 
   return agent;
 }
 
-async function startChat(ctx: Ctx, _req: Request, res: Response, sessionId: number, agent: AnalysisSession, message: string) {
+async function startChat(
+  ctx: Ctx,
+  _req: Request,
+  res: Response,
+  sessionId: number,
+  agent: AnalysisSession,
+  message: string,
+  skill?: { name: string; body: string },
+) {
   ctx.busy.add(sessionId);
-  ctx.meta.addMessage(sessionId, "user", message);
+  // 存库的是带技能标记的原文（回放时能看出技能来源），实际发给模型的 prompt 注入技能正文
+  const storedMessage = skill ? `/skill:${skill.name} ${message}`.trim() : message;
+  ctx.meta.addMessage(sessionId, "user", storedMessage);
+  if (skill) {
+    message = `用户通过技能面板选择了技能「${skill.name}」，以下是该技能的方法论，请严格按其框架执行：\n\n<skill>\n${skill.body}\n</skill>\n\n用户问题：${message}`;
+  }
 
   res.status(200).set({
     "Content-Type": "text/event-stream",

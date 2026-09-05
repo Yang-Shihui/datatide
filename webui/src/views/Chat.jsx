@@ -4,22 +4,36 @@ import { ChartBox } from "../components/ChartBox.jsx";
 import { TableExports } from "../components/TableExports.jsx";
 import { mdToHtml } from "../md.js";
 
+const SKILL_RE = /^\/([a-z0-9-]+)(?:\s+([\s\S]*))?$/;
+
 export function Chat({ user, notify }) {
   const [sessions, setSessions] = useState([]);
+  const [skills, setSkills] = useState([]);
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [liveBlocks, setLiveBlocks] = useState([]); // [{text, toolTrace[], charts[]}] for the in-flight answer
+  const [liveBlocks, setLiveBlocks] = useState([]);
+  const [pickerIdx, setPickerIdx] = useState(-1); // -1 = 关闭
+  const inputRef = useRef(null);
+  const abortRef = useRef(null);
+  const stickToBottomRef = useRef(true);
   const bottomRef = useRef(null);
 
   useEffect(() => {
     api.get("/api/sessions").then(setSessions).catch(() => {});
+    api.get("/api/skills").then(setSkills).catch(() => {});
   }, []);
 
+  // 智能滚动：仅当用户贴底时跟随，向上翻历史不打扰
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    if (stickToBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, liveBlocks]);
+
+  const onScroll = (e) => {
+    const el = e.currentTarget;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+  };
 
   const openSession = async (id) => {
     if (busy) return;
@@ -28,11 +42,13 @@ export function Chat({ user, notify }) {
       const msgs = await api.get(`/api/sessions/${id}/messages`);
       setMessages(
         msgs.map((m) => ({
+          id: m.id,
           role: m.role,
           text: m.content,
           charts: m.role === "assistant" ? JSON.parse(m.extras_json || "{}").charts || [] : [],
         })),
       );
+      stickToBottomRef.current = true;
     } catch (err) {
       notify(err.message, true);
     }
@@ -42,23 +58,39 @@ export function Chat({ user, notify }) {
     if (busy) return;
     setSessionId(null);
     setMessages([]);
+    stickToBottomRef.current = true;
   };
 
-  const send = async () => {
-    const question = input.trim();
-    if (!question || busy) return;
+  const refreshSessions = () => api.get("/api/sessions").then(setSessions).catch(() => {});
+
+  const send = async (textArg) => {
+    const raw = (textArg ?? input).trim();
+    if (!raw || busy) return;
     setInput("");
+    setPickerIdx(-1);
+    stickToBottomRef.current = true;
+
+    // /技能名 问题 → 显式调用技能
+    let skill;
+    let question = raw;
+    const m = SKILL_RE.exec(raw);
+    if (m && skills.some((s) => s.name === m[1])) {
+      skill = m[1];
+      question = m[2]?.trim() || "请按该技能的方法论对当前数据集进行分析";
+    }
+
     setBusy(true);
-    setMessages((m) => [...m, { role: "user", text: question }]);
+    setMessages((prev) => [...prev, { role: "user", text: raw }]);
     const blocks = [{ text: "", trace: [], charts: [] }];
     const touch = () => setLiveBlocks([...blocks]);
     touch();
 
     const controller = new AbortController();
+    abortRef.current = controller;
     try {
       await postSSE(
         "/api/chat",
-        { session_id: sessionId, message: question },
+        { session_id: sessionId, message: question, ...(skill ? { skill } : {}) },
         (event, data) => {
           const cur = blocks[blocks.length - 1];
           if (event === "text") cur.text += data.delta;
@@ -74,26 +106,107 @@ export function Chat({ user, notify }) {
         controller.signal,
       );
     } catch (err) {
-      notify(err.message, true);
-      if (String(err).includes("Failed to fetch")) controller.abort();
+      if (!String(err).includes("abort")) notify(err.message, true);
     }
+    abortRef.current = null;
 
-    // finalize: merge live blocks into messages
     setLiveBlocks([]);
-    setMessages((m) => [
-      ...m,
+    setMessages((prev) => [
+      ...prev,
       ...blocks
         .filter((b) => b.text || b.charts.length)
-        .map((b) => ({ role: "assistant", text: b.text, charts: b.charts, thinking: b.thinking, trace: b.trace })),
+        .map((b) => ({
+          role: "assistant",
+          text: b.text,
+          charts: b.charts,
+          thinking: b.thinking,
+          trace: b.trace,
+        })),
     ]);
     setBusy(false);
+    refreshSessions();
+  };
+
+  const stop = () => {
+    abortRef.current?.abort();
+  };
+
+  const copyMessage = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      notify("已复制");
+    } catch {
+      notify("复制失败（浏览器不允许访问剪贴板）", true);
+    }
+  };
+
+  /** 编辑重发：回退到该消息（服务端截断 + 销毁内存 agent），原文回填输入框 */
+  const editResend = async (msg) => {
+    if (busy) return;
     if (sessionId == null) {
-      api.get("/api/sessions").then((s) => {
-        setSessions(s);
-        if (s.length > 0) setSessionId(s[0].id);
-      }).catch(() => {});
-    } else {
-      api.get("/api/sessions").then(setSessions).catch(() => {});
+      setInput(msg.text);
+      inputRef.current?.focus();
+      return;
+    }
+    try {
+      await api.post(`/api/sessions/${sessionId}/truncate`, { message_id: msg.id });
+      const idx = messages.findIndex((x) => x.id === msg.id);
+      setMessages(messages.slice(0, idx));
+      setInput(msg.text.replace(/^\/skill:([a-z0-9-]+)\s*/, "/$1 "));
+      stickToBottomRef.current = true;
+      inputRef.current?.focus();
+      notify(`已回退，编辑后重新发送（其后的 ${messages.length - idx} 条消息已移除）`);
+      refreshSessions();
+    } catch (err) {
+      notify(err.message, true);
+    }
+  };
+
+  // "/" 技能面板：输入是以 / 开头的纯命令 token（还没打空格）时弹出
+  const pickerQuery = /^\/([a-z0-9-]*)$/.exec(input) ? input.slice(1) : null;
+  const pickerSkills =
+    pickerQuery === null
+      ? []
+      : skills.filter((s) => s.name.startsWith(pickerQuery) || s.description.includes(pickerQuery));
+  const pickerOpen = pickerSkills.length > 0;
+
+  const applySkill = (name) => {
+    setInput(`/${name} `);
+    setPickerIdx(-1);
+    inputRef.current?.focus();
+  };
+
+  const onInputChange = (e) => {
+    setInput(e.target.value);
+    setPickerIdx(-1);
+  };
+
+  const onKeyDown = (e) => {
+    if (pickerOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setPickerIdx((i) => (i + 1) % pickerSkills.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setPickerIdx((i) => (i <= 0 ? pickerSkills.length - 1 : i - 1));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        applySkill(pickerSkills[pickerIdx >= 0 ? pickerIdx : 0].name);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setPickerIdx(-1);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey && !busy) {
+      e.preventDefault();
+      send();
     }
   };
 
@@ -115,7 +228,7 @@ export function Chat({ user, notify }) {
         ))}
       </aside>
       <div className="chat-pane">
-        <div className="messages">
+        <div className="messages" onScroll={onScroll}>
           {blocks.length === 0 && (
             <div className="empty-center">
               <div className="title">问点数据问题</div>
@@ -125,40 +238,67 @@ export function Chat({ user, notify }) {
                   "2026年各区域销售额占比",
                   "对比线上和线下渠道的月度趋势",
                 ].map((q) => (
-                  <button key={q} className="suggestion-chip" onClick={() => { setInput(q); }}>
+                  <button key={q} className="suggestion-chip" onClick={() => send(q)}>
                     {q}
                   </button>
                 ))}
               </div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                输入 / 可唤起分析技能
+              </div>
             </div>
           )}
           {blocks.map((b, i) => (
-            <MessageBlock key={i} block={b} />
+            <MessageBlock key={b.id ?? `live-${i}`} block={b} onCopy={copyMessage} onEdit={busy ? undefined : editResend} />
           ))}
           <div ref={bottomRef} />
         </div>
-        <div className="chat-input">
+        <div className="composer">
+          {pickerOpen && (
+            <div className="skill-picker" role="listbox">
+              <div className="skill-picker-head">分析技能</div>
+              {pickerSkills.map((s, i) => (
+                <button
+                  key={s.name}
+                  type="button"
+                  role="option"
+                  aria-selected={i === pickerIdx}
+                  className={`skill-option${i === pickerIdx ? " active" : ""}`}
+                  onMouseEnter={() => setPickerIdx(i)}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // 防止 textarea 失焦
+                    applySkill(s.name);
+                  }}
+                >
+                  <span className="skill-name">/{s.name}</span>
+                  <span className="skill-desc">{s.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
+            ref={inputRef}
             value={input}
-            placeholder={`向数据分析助手提问…（${user.datasets.length > 0 ? user.datasets.join("、") : "无授权数据集"}）`}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !busy) {
-                e.preventDefault();
-                send();
-              }
-            }}
+            placeholder="向数据分析助手提问… 输入 / 唤起技能"
+            onChange={onInputChange}
+            onKeyDown={onKeyDown}
           />
-          <button className="primary" onClick={send} disabled={busy || !input.trim()}>
-            {busy ? "分析中…" : "发送"}
-          </button>
+          {busy ? (
+            <button className="ghost stop" onClick={stop}>
+              停止
+            </button>
+          ) : (
+            <button className="primary" onClick={() => send()} disabled={!input.trim()}>
+              发送
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function MessageBlock({ block }) {
+function MessageBlock({ block, onCopy, onEdit }) {
   return (
     <>
       {block.trace?.length > 0 && (
@@ -175,7 +315,26 @@ function MessageBlock({ block }) {
       )}
       <div className={`msg ${block.role}`}>
         <div className="bubble">
-          <div className="role">{block.role === "user" ? "你" : "分析助手"}</div>
+          <div className="msg-head">
+            <span className="role">{block.role === "user" ? "你" : "分析助手"}</span>
+            <span className="msg-actions">
+              <button type="button" title="复制" onClick={() => onCopy(block.text)}>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                复制
+              </button>
+              {block.role === "user" && !block.live && onEdit && (
+                <button type="button" title="编辑并重新发送（其后的对话将被移除）" onClick={() => onEdit(block)}>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  </svg>
+                  编辑
+                </button>
+              )}
+            </span>
+          </div>
           {block.live && !block.text ? (
             <span className="typing-dots"><span /><span /><span /></span>
           ) : (
@@ -186,7 +345,7 @@ function MessageBlock({ block }) {
       {block.charts?.map((c) => (
         <ChartBox key={c.id} spec={c.spec} title={c.title} />
       ))}
-      {!block.live && block.role === "assistant" && <TableExports text={block.text} />}
+      {block.role === "assistant" && !block.live && <TableExports text={block.text} />}
     </>
   );
 }

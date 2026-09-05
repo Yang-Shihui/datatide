@@ -1,6 +1,8 @@
 // Minimal markdown renderer. Escapes all HTML first, then applies a small
 // subset: headings, bold, inline code, tables, lists. No raw HTML passthrough.
 export function mdToHtml(md) {
+  // 模型偶尔把标题写在段中同一行（"…假设。## 结论"）——强制标题另起一行
+  md = md.replace(/([^\n#])((?:#{1,4})\s)/g, "$1\n$2");
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const inline = (s) =>
     esc(s)

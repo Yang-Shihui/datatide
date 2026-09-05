@@ -134,8 +134,17 @@ export class MetaStore {
   // ---- users & access ----
 
   createUser(username: string, passwordHash: string, role: "admin" | "analyst" | "viewer"): UserRow {
-    this.db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)").run(username, passwordHash, role);
+    this.db
+      .prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)")
+      .run(username, passwordHash, role);
     return this.getUser(username)!;
+  }
+
+  addMessage(sessionId: number, role: "user" | "assistant", content: string, extrasJson?: string): number {
+    const info = this.db
+      .prepare("INSERT INTO chat_messages (session_id, role, content, extras_json) VALUES (?, ?, ?, ?)")
+      .run(sessionId, role, content, extrasJson);
+    return Number(info.lastInsertRowid);
   }
 
   getUser(username: string): UserRow | undefined {
@@ -219,10 +228,12 @@ export class MetaStore {
     return row?.user_id;
   }
 
-  addMessage(sessionId: number, role: "user" | "assistant", content: string, extrasJson?: string): void {
-    this.db
-      .prepare("INSERT INTO chat_messages (session_id, role, content, extras_json) VALUES (?, ?, ?, ?)")
-      .run(sessionId, role, content, extrasJson);
+  /** 删除 sessionId 下 id >= messageId 的消息（编辑重发的回退语义） */
+  truncateMessagesFrom(sessionId: number, messageId: number): number {
+    const info = this.db
+      .prepare("DELETE FROM chat_messages WHERE session_id = ? AND id >= ?")
+      .run(sessionId, messageId);
+    return Number(info.changes);
   }
 
   listMessages(sessionId: number): { id: number; role: string; content: string; extras_json: string | null; created_at: string }[] {

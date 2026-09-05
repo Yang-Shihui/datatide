@@ -292,7 +292,37 @@ label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 5px
 .chart-download:hover { color: var(--primary); border-color: var(--primary); }
 .table-exports { max-width: 860px; margin: -8px auto 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .table-export { font-size: 12.5px; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px; }
+.composer { position: relative; display: flex; gap: 10px; padding: 14px 32px; border-top: 1px solid var(--border); background: var(--panel); }
 .chat-input { display: flex; gap: 10px; padding: 14px 32px; border-top: 1px solid var(--border); background: var(--panel); }
+.skill-picker {
+  position: absolute; bottom: calc(100% + 8px); left: 32px; right: 32px; z-index: 40;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lift); padding: 6px; max-height: 300px; overflow-y: auto;
+}
+.skill-picker-head { font-size: 12px; color: var(--faint); padding: 4px 10px 6px; letter-spacing: 0.4px; }
+.skill-option {
+  display: flex; align-items: baseline; gap: 12px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  padding: 8px 11px; border-radius: var(--radius-sm); color: var(--text);
+  transition: background 120ms ease;
+}
+.skill-option.active { background: var(--primary-soft); }
+.skill-option .skill-name { font-family: var(--mono); font-size: 13px; color: var(--primary); font-weight: 500; flex: none; }
+.skill-option .skill-desc { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.stop { color: var(--err); border-color: var(--err); }
+button.stop:hover { background: var(--err-soft); border-color: var(--err); color: var(--err); }
+.msg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.msg .role { margin-bottom: 0; }
+.msg-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 120ms ease; }
+.msg:hover .msg-actions { opacity: 1; }
+.msg-actions button {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer;
+  color: var(--faint); font-size: 12px; font-family: inherit;
+  padding: 2px 7px; border-radius: 5px;
+  transition: color 120ms ease, background 120ms ease;
+}
+.msg-actions button:hover { color: var(--primary); background: var(--primary-soft); }
 .chat-input textarea { flex: 1; resize: none; height: 46px; }
 .empty-center { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; min-height: 62vh; }
 .empty-center .title { font-size: 21px; } .empty-center { margin: auto; } .empty-center-x { font-weight: 600; color: var(--text); }
