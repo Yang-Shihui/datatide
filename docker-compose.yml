@@ -1,0 +1,17 @@
+services:
+  bi-agent:
+    build: .
+    container_name: bi-agent
+    ports:
+      - "${BI_AGENT_PORT:-8200}:8200"
+    env_file:
+      - .env
+    volumes:
+      - bi-data:/app/data
+      - ./reports:/app/reports
+      # 模型配置（Pi SDK 读取 ~/.pi/agent/models.json），按需挂载：
+      # - ${HOME}/.pi/agent:/home/node/.pi/agent:ro
+    restart: unless-stopped
+
+volumes:
+  bi-data:
