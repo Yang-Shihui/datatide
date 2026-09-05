@@ -32,8 +32,13 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
 
   const showSchema = wrap(async (name) => {
     setSchema({ name, loading: true });
-    const s = await api.get(`/api/datasets/${name}/schema`);
-    setSchema({ name, ...s });
+    try {
+      const s = await api.get(`/api/datasets/${name}/schema`);
+      setSchema({ name, ...s });
+    } catch (err) {
+      setSchema(null);
+      throw err;
+    }
   });
 
   const remove = wrap(async (name) => {
@@ -79,6 +84,7 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                       options={[
                         { value: "csv", label: "CSV" },
                         { value: "parquet", label: "Parquet" },
+                        { value: "xlsx", label: "Excel (.xlsx)" },
                       ]}
                       ariaLabel="文件格式"
                     />

@@ -40,6 +40,10 @@ export async function postSSE(path, body, onEvent, signal) {
     body: JSON.stringify(body),
     signal,
   });
+  if (res.status === 401) {
+    unauthorized();
+    throw new Error("未登录或会话已过期");
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `HTTP ${res.status}`);
@@ -59,5 +63,12 @@ export async function postSSE(path, body, onEvent, signal) {
       const data = lines.find((l) => l.startsWith("data: "))?.slice(6);
       if (event && data) onEvent(event, JSON.parse(data));
     }
+  }
+  // 流结尾的最后一段可能没有空行终止（代理截断/中间件）——补一次冲刷
+  if (buffer.trim()) {
+    const lines = buffer.split("\n");
+    const event = lines.find((l) => l.startsWith("event: "))?.slice(7);
+    const data = lines.find((l) => l.startsWith("data: "))?.slice(6);
+    if (event && data) onEvent(event, JSON.parse(data));
   }
 }

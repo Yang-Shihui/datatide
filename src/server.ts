@@ -8,6 +8,7 @@ import { DatasetRegistry } from "./agent/registry.ts";
 import { SkillStore } from "./agent/skills.ts";
 import { McpBridge, loadMcpConfig } from "./mcp/bridge.ts";
 import { createAnalysisSession, type AnalysisSession } from "./agent/agent.ts";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { runTurn, type TurnEvent } from "./agent/runner.ts";
 import { AuthService } from "./auth.ts";
 import { ReportScheduler } from "./reports/scheduler.ts";
@@ -80,10 +81,10 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
 
   // ---- auth ----
   app.post("/auth/register", (req, res) => guard(res, () => {
-    const { username, password, role } = req.body as { username: string; password: string; role?: "admin" | "analyst" | "viewer" };
-    // first registered user becomes admin automatically
+    const { username, password } = req.body as { username: string; password: string };
+    // 首个注册用户自动成为 admin；此后注册一律 analyst（角色提升只能由 admin 在库内操作，不接受请求体指定——防匿名自提权）
     const isFirst = meta.listUsers().length === 0;
-    const user = auth.register(username, password, isFirst ? "admin" : role ?? "analyst");
+    const user = auth.register(username, password, isFirst ? "admin" : "analyst");
     res.json({ id: user.id, username: user.username, role: user.role });
   }));
 
@@ -196,14 +197,32 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     const id = sessionId ?? meta.createChatSession(user.id, message.slice(0, 30));
     if (meta.chatSessionOwner(id) !== user.id) return res.status(403).json({ error: "会话不存在" });
     if (ctx.busy.has(id)) return res.status(409).json({ error: "会话正在处理中，请稍候" });
+    ctx.busy.add(id); // 在任何 await 之前占住会话，防止并发请求交错（TOCTOU）
 
+    try {
+      await runChatTurn(ctx, req, res, user, id, message, skillName ? { name: skillName, body: skillBody! } : undefined, editMessageId != null ? Number(editMessageId) : undefined);
+    } finally {
+      ctx.busy.delete(id);
+    }
+  }));
+
+  async function runChatTurn(
+    ctx: Ctx,
+    req: Request,
+    res: Response,
+    user: { id: number; username: string },
+    id: number,
+    message: string,
+    skill?: { name: string; body: string },
+    editMessageId?: number,
+  ) {
     const agent = await getOrCreateAgent(ctx, user.username, id);
     if (!agent) return res.status(400).json({ error: "当前用户没有被授权任何数据集" });
 
     if (editMessageId != null) {
       // 编辑重发：把内存会话分支回退到该用户消息之前（更早的轮次与上下文原样保留），
       // DB 删除该消息及其后所有消息，然后按普通回合重新生成
-      const target = meta.getMessage(Number(editMessageId));
+      const target = meta.getMessage(editMessageId);
       if (!target || target.session_id !== id) return res.status(400).json({ error: "要编辑的消息不存在" });
       if (target.role !== "user") return res.status(400).json({ error: "只能编辑用户消息" });
       let piEntry: string | undefined;
@@ -214,13 +233,26 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
       }
       const sm = agent.session.sessionManager;
       const entry = piEntry ? sm.getEntries().find((e) => e.id === piEntry) : undefined;
-      if (entry?.parentId) sm.branch(entry.parentId);
-      else sm.resetLeaf(); // 首条消息或旧消息无 piEntry 映射（如服务重启过）：回退到会话起点
-      meta.truncateMessagesFrom(id, Number(editMessageId));
+      // 仅当该条目确实位于当前分支（从 leaf 向上可达）时才精确回退；
+      // 否则（服务重启/经历过其他编辑/条目已被 compaction）内存树与 DB 无法对应，
+      // 直接重建会话——宁可丢上下文也不能把废弃分支的内容混进模型上下文
+      const onCurrentBranch = entry ? isOnCurrentBranch(sm, entry) : false;
+      if (entry && onCurrentBranch) {
+        if (entry.parentId) sm.branch(entry.parentId);
+        else sm.resetLeaf();
+      } else {
+        agent.dispose();
+        ctx.agents.delete(id);
+        const rebuilt = await getOrCreateAgent(ctx, user.username, id);
+        if (!rebuilt) return res.status(400).json({ error: "会话重建失败" });
+        return startChat(ctx, req, res, id, rebuilt, message, skill ? { name: skill.name, body: skill.body } : undefined);
+      }
+      await startChat(ctx, req, res, id, agent, message, skill ? { name: skill.name, body: skill.body } : undefined);
+      return;
     }
 
-    await startChat(ctx, req, res, id, agent, message, skillBody ? { name: skillName!, body: skillBody } : undefined);
-  }));
+    await startChat(ctx, req, res, id, agent, message);
+  }
 
   app.get("/api/sessions", (req, res) => {
     const user = currentUser(req)!;
@@ -291,12 +323,19 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
   }));
 
   app.get("/api/reports/:id/runs", (req, res) => guard(res, () => {
-    res.json(meta.listReportRuns(Number(req.params.id)));
+    const user = currentUser(req)!;
+    const config = meta.getReportConfig(Number(req.params.id));
+    if (!config) return res.status(404).json({ error: "报告不存在" });
+    if (user.role !== "admin" && config.username !== user.username) return res.status(403).json({ error: "无权操作" });
+    res.json(meta.listReportRuns(config.id));
   }));
 
   app.get("/api/report-runs/:runId/content", (req, res) => guard(res, () => {
+    const user = currentUser(req)!;
     const run = meta.getReportRun(Number(req.params.runId));
     if (!run || !run.output_path) return res.status(404).json({ error: "报告内容不存在" });
+    const config = meta.getReportConfig(Number(run.config_id));
+    if (user.role !== "admin" && config?.username !== user.username) return res.status(403).json({ error: "无权操作" });
     res.type("text/markdown; charset=utf-8").send(readReport(String(run.output_path), reportsDir));
   }));
 
@@ -307,6 +346,24 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
 }
 
 // ---- chat internals ----
+
+/** piEntry 是否在当前分支上（从 leaf 沿 parentId 上溯可达） */
+function isOnCurrentBranch(sm: AnalysisSession["session"]["sessionManager"], entry: SessionEntry): boolean {
+  let leafId: string | null | undefined;
+  try {
+    leafId = sm.getLeafId();
+  } catch {
+    return false;
+  }
+  const byId = new Map(sm.getEntries().map((e: SessionEntry) => [e.id, e] as const));
+  let cur = leafId ? byId.get(leafId) : undefined;
+  let guard = 0;
+  while (cur && guard++ < 10_000) {
+    if (cur.id === entry.id) return true;
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return false;
+}
 
 async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): Promise<AnalysisSession | undefined> {
   const existing = ctx.agents.get(sessionId);
@@ -376,7 +433,7 @@ async function startChat(
   res.on("close", () => {
     if (!finished) {
       agent.session.abort();
-      ctx.busy.delete(sessionId);
+      // busy 不在此处删除：abort 异步 unwind，startChat 的 finally 会统一释放
     }
   });
 

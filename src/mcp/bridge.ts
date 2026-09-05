@@ -83,15 +83,17 @@ export class McpBridge {
       if (!cfg.command && !cfg.url) throw new Error(`MCP server ${name}: 需要 command（stdio）或 url（http）之一`);
       if (cfg.command && cfg.url) throw new Error(`MCP server ${name}: command 与 url 只能配一个`);
     }
-    for (const name of Object.keys(bridge.servers)) {
-      try {
-        await bridge.refreshServerTools(name);
-      } catch (err) {
-        console.error(`[mcp] server ${name} 预取工具列表失败（call 时重试）:`, err instanceof Error ? err.message : err);
-      } finally {
-        bridge.disconnect(name);
-      }
-    }
+    await Promise.allSettled(
+      Object.keys(bridge.servers).map(async (name) => {
+        try {
+          await bridge.refreshServerTools(name);
+        } catch (err) {
+          console.error(`[mcp] server ${name} 预取工具列表失败（call 时重试）:`, err instanceof Error ? err.message : err);
+        } finally {
+          bridge.disconnect(name);
+        }
+      }),
+    );
     return bridge;
   }
 
@@ -108,6 +110,10 @@ export class McpBridge {
     const transport = cfg.url
       ? new StreamableHTTPClientTransport(new URL(cfg.url), { requestInit: { headers: cfg.headers } })
       : new StdioClientTransport({ command: cfg.command!, args: cfg.args, env: { ...(cfg.env ?? {}) } });
+    client.onclose = () => {
+      // server 进程崩溃/HTTP 断连：立刻驱逐缓存连接，下次 call 走重连
+      this.conns.delete(server);
+    };
     await client.connect(transport);
     const timer = setTimeout(() => this.disconnect(server), IDLE_DISCONNECT_MS);
     this.conns.set(server, { client, timer });
@@ -162,7 +168,19 @@ export class McpBridge {
 
   /** 网关 call：调用 server__tool */
   async call(fullName: string, args: Record<string, unknown>): Promise<{ text: string; images: { data: string; mimeType: string }[] }> {
-    const meta = this.toolIndex.get(fullName);
+    let meta = this.toolIndex.get(fullName);
+    if (!meta) {
+      // 启动预取失败的补救：server__tool 形如 <server>__<tool>，尝试重取该 server 的工具清单
+      const server = fullName.split("__")[0]!;
+      if (this.servers[server]) {
+        try {
+          await this.refreshServerTools(server);
+        } catch {
+          // 刷新失败按不存在处理
+        }
+        meta = this.toolIndex.get(fullName);
+      }
+    }
     if (!meta) throw new Error(`工具 ${fullName} 不存在。先用 mcp 工具的 action=list 查看可用工具。`);
     const client = await this.connect(meta.server);
     const result = await client.callTool({ name: meta.tool, arguments: args });
@@ -170,13 +188,21 @@ export class McpBridge {
     const images: { data: string; mimeType: string }[] = [];
     for (const c of (result.content ?? []) as Array<{ type: string; text?: string; data?: string; mimeType?: string }>) {
       if (c.type === "text" && c.text) textParts.push(c.text);
-      else if (c.type === "image" && c.data) images.push({ data: c.data, mimeType: c.mimeType ?? "image/png" });
-      else if (c.type !== "text" && c.type !== "image") textParts.push(`[不支持的内容类型: ${c.type}]`);
+      else if (c.type === "image" && c.data) {
+        // 单张 >1.5MB base64 的图片直接丢弃（塞进模型上下文代价过高）
+        if (c.data.length <= 2_000_000) images.push({ data: c.data, mimeType: c.mimeType ?? "image/png" });
+        else textParts.push(`[图片过大已丢弃：${(c.data.length / 1_000_000).toFixed(1)}MB]`);
+      } else if (c.type !== "text" && c.type !== "image") textParts.push(`[不支持的内容类型: ${c.type}]`);
     }
     let text = textParts.join("\n");
     if (text.length > MAX_OUTPUT_CHARS) {
-      text = text.slice(0, MAX_OUTPUT_CHARS) + `\n\n[输出超长已截断：原 ${text.length} 字符。请缩小调用范围。]`;
+      text = text.slice(0, MAX_OUTPUT_CHARS);
+      // 不劈开 UTF-16 代理对（emoji）
+      if (/[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1);
+      text += `\n\n[输出超长已截断：原超过 ${MAX_OUTPUT_CHARS} 字符。请缩小调用范围。]`;
     }
+    // MCP server 侧报错要显式呈现给模型，不能混在普通结果里
+    if (result.isError) text = `[工具报错]\n${text}`;
     return { text, images };
   }
 

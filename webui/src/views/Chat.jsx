@@ -21,6 +21,7 @@ export function Chat({ user, notify }) {
   const abortRef = useRef(null);
   const stickToBottomRef = useRef(true);
   const bottomRef = useRef(null);
+  const turnSeqRef = useRef(0); // 会话/轮次代际：finalize 完成时若代际已变则丢弃结果
 
   useEffect(() => {
     api.get("/api/sessions").then(setSessions).catch(() => {});
@@ -39,6 +40,8 @@ export function Chat({ user, notify }) {
 
   const openSession = async (id) => {
     if (busy) return;
+    turnSeqRef.current += 1; // 使在途 finalize 失效
+    setEditing(null);
     setSessionId(id);
     try {
       const msgs = await api.get(`/api/sessions/${id}/messages`);
@@ -59,6 +62,8 @@ export function Chat({ user, notify }) {
 
   const newSession = () => {
     if (busy) return;
+    turnSeqRef.current += 1;
+    setEditing(null);
     setSessionId(null);
     setMessages([]);
     stickToBottomRef.current = true;
@@ -69,7 +74,7 @@ export function Chat({ user, notify }) {
   const send = async (textArg, editMessageId) => {
     const raw = (textArg ?? input).trim();
     if (!raw || busy) return;
-    setInput("");
+    if (!textArg) setInput(""); // 从建议 chips 发送时不清掉用户草稿
     setPickerIdx(-1);
     setEditing(null);
     stickToBottomRef.current = true;
@@ -83,6 +88,9 @@ export function Chat({ user, notify }) {
       question = m[2]?.trim() || "请按该技能的方法论对当前数据集进行分析";
     }
 
+    turnSeqRef.current += 1;
+    const mySeq = turnSeqRef.current;
+    console.log("[dbg] send start", raw.slice(0, 20), "mySeq", mySeq, "sessionId", sessionId);
     setBusy(true);
     setMessages((prev) => [...prev, { role: "user", text: raw }]);
     const blocks = [{ text: "", trace: [], charts: [] }];
@@ -115,17 +123,22 @@ export function Chat({ user, notify }) {
         controller.signal,
       );
     } catch (err) {
+      console.log("[dbg] postSSE catch:", String(err).slice(0, 120));
       if (!String(err).includes("abort")) notify(err.message, true);
     }
     abortRef.current = null;
+    console.log("[dbg] postSSE finished, finalizing");
 
-    setLiveBlocks([]);
-    setBusy(false);
-
-    // 回合结束后以服务端持久化消息为准（本地追加的消息没有 id，编辑重发/截断需要 id）
+    // 回合结束后以服务端持久化消息为准（本地追加的消息没有 id，编辑重发/截断需要 id）。
+    // liveBlocks 先不清空：等 refetch 成功再替换，避免回答在慢网络上闪烁消失。
     const finalize = async () => {
       const toLocal = (m) => {
-        const extras = m.role === "assistant" ? JSON.parse(m.extras_json || "{}") : {};
+        let extras = {};
+        try {
+          extras = m.role === "assistant" ? JSON.parse(m.extras_json || "{}") : {};
+        } catch {
+          extras = {};
+        }
         return {
           id: m.id,
           role: m.role,
@@ -134,6 +147,7 @@ export function Chat({ user, notify }) {
           thinking: extras.thinking || "",
         };
       };
+      let fetched = null;
       try {
         let sid = sessionId;
         if (sid == null) {
@@ -142,12 +156,15 @@ export function Chat({ user, notify }) {
           sid = s[0]?.id;
           if (sid != null) setSessionId(sid);
         }
-        if (sid != null) {
-          setMessages((await api.get(`/api/sessions/${sid}/messages`)).map(toLocal));
-          return;
-        }
+        if (sid != null) fetched = await api.get(`/api/sessions/${sid}/messages`);
       } catch {
-        // 回退到本地合并（无 id，仅展示）
+        // 拉取失败走本地合并
+      }
+      if (mySeq !== turnSeqRef.current) return; // 代际已变（用户切换/新开/新轮次），丢弃过期结果
+      setLiveBlocks([]);
+      if (fetched) {
+        setMessages(fetched.map(toLocal));
+        return;
       }
       setMessages((prev) => [
         ...prev,
@@ -180,18 +197,23 @@ export function Chat({ user, notify }) {
 
   const submitEdit = (msgId, newText) => {
     const idx = messages.findIndex((x) => x.id === msgId);
-    if (idx >= 0) setMessages(messages.slice(0, idx)); // 乐观移除旧轮次，其余消息与上下文不动
+    if (idx < 0) {
+      notify("要编辑的消息已不存在（会话可能被其他窗口修改）", true);
+      return;
+    }
+    setMessages(messages.slice(0, idx)); // 乐观移除旧轮次，其余消息与上下文不动
     stickToBottomRef.current = true;
     void send(newText, msgId);
   };
 
-  // "/" 技能面板：输入是以 / 开头的纯命令 token（还没打空格）时弹出
+  // "/" 技能面板：输入是以 / 开头的纯命令 token（还没打空格）时弹出；Esc 可关闭直到输入变化
+  const [pickerDismissed, setPickerDismissed] = useState(false);
   const pickerQuery = /^\/([a-z0-9-]*)$/.exec(input) ? input.slice(1) : null;
   const pickerSkills =
     pickerQuery === null
       ? []
       : skills.filter((s) => s.name.startsWith(pickerQuery) || s.description.includes(pickerQuery));
-  const pickerOpen = pickerSkills.length > 0;
+  const pickerOpen = !pickerDismissed && pickerSkills.length > 0;
 
   const applySkill = (name) => {
     setInput(`/${name} `);
@@ -202,6 +224,7 @@ export function Chat({ user, notify }) {
   const onInputChange = (e) => {
     setInput(e.target.value);
     setPickerIdx(-1);
+    setPickerDismissed(false);
   };
 
   const onKeyDown = (e) => {
@@ -224,6 +247,7 @@ export function Chat({ user, notify }) {
       if (e.key === "Escape") {
         e.preventDefault();
         setPickerIdx(-1);
+        setPickerDismissed(true);
         return;
       }
     }
@@ -356,7 +380,7 @@ function MessageBlock({ block, onCopy, onEdit, editing, onSubmitEdit, onCancelEd
                 </svg>
                 复制
               </button>
-              {block.role === "user" && !block.live && onEdit && editing?.id !== block.id && (
+              {block.role === "user" && !block.live && block.id != null && onEdit && editing?.id !== block.id && (
                 <button type="button" title="编辑并重新生成回答（之前的消息不受影响）" onClick={() => onEdit(block)}>
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />

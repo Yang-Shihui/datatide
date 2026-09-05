@@ -86,12 +86,15 @@ export class ReportScheduler {
         `请基于数据集 ${config.dataset_name} 生成一份 markdown 分析报告，主题：「${config.title}」。\n` +
         `分析要求：${config.prompt}\n` +
         `输出结构：结论摘要（3-5 条要点）→ 关键数据表 → 趋势/归因分析 → 建议。直接输出 markdown 正文，不要开场白。`;
-      const { text } = await runTurn(agent, prompt, () => {});
-      const outputPath = join(this.deps.reportsDir, `report-${configId}-run${runId}.md`);
-      writeFileSync(outputPath, `# ${config.title}\n\n> 数据集: ${config.dataset_name} · 生成于 ${new Date().toISOString()}\n\n${text}\n`);
-      this.deps.meta.markReportRun(runId, configId, "success", outputPath, null);
-      agent.dispose();
-      return { runId, outputPath };
+      try {
+        const { text } = await runTurn(agent, prompt, () => {});
+        const outputPath = join(this.deps.reportsDir, `report-${configId}-run${runId}.md`);
+        writeFileSync(outputPath, `# ${config.title}\n\n> 数据集: ${config.dataset_name} · 生成于 ${new Date().toISOString()}\n\n${text}\n`);
+        this.deps.meta.markReportRun(runId, configId, "success", outputPath, null);
+        return { runId, outputPath };
+      } finally {
+        agent.dispose(); // 成功失败都要释放，否则 cron 每晚漏一个会话
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.deps.meta.markReportRun(runId, configId, "error", null, message);

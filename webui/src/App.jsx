@@ -134,10 +134,20 @@ function Login({ onLogin, notify }) {
 }
 
 function Settings({ user, wrap }) {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(undefined);
   useEffect(() => {
-    api.get("/api/settings").then(setData).catch(() => {});
+    api.get("/api/settings").then(setData).catch((e) => setData({ error: e.message }));
   }, []);
+  if (data?.error) {
+    return (
+      <div className="page">
+        <div className="page-inner">
+          <h2>设置</h2>
+          <div className="panel ds-form error-text">无法加载：{data.error}（该页面仅管理员可见）</div>
+        </div>
+      </div>
+    );
+  }
   if (!data) return <div className="page"><div className="page-inner"><div className="skeleton" style={{ height: 200 }} /></div></div>;
   return (
     <div className="page">

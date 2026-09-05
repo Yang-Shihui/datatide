@@ -35,7 +35,14 @@ function scanDir(dir: string, source: Skill["source"], out: Skill[], seen: Set<s
     if (entry.isDirectory()) {
       scanDir(full, source, out, seen);
     } else if (entry.isFile() && entry.name === "SKILL.md") {
-      const raw = readFileSync(full, "utf8");
+      let raw: string;
+      try {
+        raw = readFileSync(full, "utf8");
+      } catch (err) {
+        // 外部挂载目录里一个读不了的文件不应该拖死整个服务
+        console.error(`[skills] 跳过不可读的技能文件 ${full}:`, err instanceof Error ? err.message : err);
+        continue;
+      }
       const { name, description, body } = parseFrontmatter(raw);
       // Agent Skills 规范：description 必填（缺失则丢弃），name 回退到目录名
       if (!description) continue;
@@ -84,11 +91,16 @@ export class SkillStore {
     );
   }
 
-  /** use_skill 工具的返回正文 */
+  /** use_skill 工具的返回正文；文件被删/不可读时返回空串（上层报"技能不存在或已失效"） */
   loadBody(name: string): string {
     const skill = this.get(name);
     if (!skill) return "";
-    const { body } = parseFrontmatter(readFileSync(skill.filePath, "utf8"));
-    return body;
+    try {
+      const { body } = parseFrontmatter(readFileSync(skill.filePath, "utf8"));
+      return body;
+    } catch (err) {
+      console.error(`[skills] 加载技能正文失败 ${skill.filePath}:`, err instanceof Error ? err.message : err);
+      return "";
+    }
   }
 }

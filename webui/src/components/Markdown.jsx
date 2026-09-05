@@ -13,7 +13,7 @@ export const Markdown = memo(function Markdown({ text }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          a: (props) => <a {...props} target="_blank" rel="noreferrer" />,
+          a: ({ node, ...rest }) => <a {...rest} target="_blank" rel="noreferrer" />,
         }}
       >
         {text}

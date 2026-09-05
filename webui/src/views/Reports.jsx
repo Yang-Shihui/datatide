@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api.js";
+import { api, getToken } from "../api.js";
 import { Select } from "../components/Select.jsx";
 import { mdToHtml } from "../md.js";
 
@@ -37,7 +37,7 @@ export function Reports({ user, notify, wrap }) {
 
   const downloadReport = wrap(async (runId) => {
     const res = await fetch(`/api/report-runs/${runId}/content`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("datatide-token")}` },
+      headers: { Authorization: `Bearer ${getToken()}` },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
@@ -51,8 +51,9 @@ export function Reports({ user, notify, wrap }) {
 
   const showContent = wrap(async (runId) => {
     const res = await fetch(`/api/report-runs/${runId}/content`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("datatide-token")}` },
+      headers: { Authorization: `Bearer ${getToken()}` },
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     setContent({ runId, html: mdToHtml(text) });
   });

@@ -78,8 +78,10 @@ export function splitMd(md) {
 
 export function tableToCsv(header, rows) {
   const esc = (v) => {
-    const s2 = String(v ?? "");
-    return /[",\n]/.test(s2) ? '"' + s2.replace(/"/g, '""') + '"' : s2;
+    let s2 = String(v ?? "");
+    // Excel 公式注入防护：=+-@ 开头的单元格会被当公式执行，前置单引号中和
+    if (/^[=+\-@\t\r]/.test(s2)) s2 = "'" + s2;
+    return /[",\n\r]/.test(s2) ? '"' + s2.replace(/"/g, '""') + '"' : s2;
   };
   return [header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
 }
