@@ -279,7 +279,19 @@ label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 5px
 }
 .tool-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
 .tool-chip.err .dot { background: var(--err); }
-.chart-box { max-width: 860px; margin: 0 auto 16px; height: 340px; }
+.chart-wrap { max-width: 860px; margin: 0 auto 16px; position: relative; }
+.chart-box { height: 340px; }
+.chart-download {
+  position: absolute; top: 8px; right: 8px; z-index: 5;
+  opacity: 0; pointer-events: none;
+  background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 4px 11px; font-size: 12.5px; font-family: inherit; cursor: pointer;
+  transition: opacity 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.chart-wrap:hover .chart-download { opacity: 1; pointer-events: auto; }
+.chart-download:hover { color: var(--primary); border-color: var(--primary); }
+.table-exports { max-width: 860px; margin: -8px auto 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+.table-export { font-size: 12.5px; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px; }
 .chat-input { display: flex; gap: 10px; padding: 14px 32px; border-top: 1px solid var(--border); background: var(--panel); }
 .chat-input textarea { flex: 1; resize: none; height: 46px; }
 .empty-center { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; min-height: 62vh; }

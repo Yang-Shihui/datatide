@@ -35,6 +35,20 @@ export function Reports({ user, notify, wrap }) {
     setContent(null);
   });
 
+  const downloadReport = wrap(async (runId) => {
+    const res = await fetch(`/api/report-runs/${runId}/content`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("datatide-token")}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `datatide-report-${runId}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
   const showContent = wrap(async (runId) => {
     const res = await fetch(`/api/report-runs/${runId}/content`, {
       headers: { Authorization: `Bearer ${localStorage.getItem("datatide-token")}` },
@@ -104,9 +118,14 @@ export function Reports({ user, notify, wrap }) {
                   {run.started_at}
                 </span>
                 {run.status === "success" && (
-                  <button className="ghost" onClick={() => showContent(run.id)}>
-                    查看报告
-                  </button>
+                  <>
+                    <button className="ghost" onClick={() => showContent(run.id)}>
+                      查看报告
+                    </button>
+                    <button className="ghost" onClick={() => downloadReport(run.id)}>
+                      下载 .md
+                    </button>
+                  </>
                 )}
                 {run.error && <span className="error-text" style={{ fontSize: 13 }}>{run.error}</span>}
               </div>

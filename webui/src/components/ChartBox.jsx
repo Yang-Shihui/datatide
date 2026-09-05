@@ -82,10 +82,12 @@ function polishAxis(axis) {
 
 export function ChartBox({ spec, title }) {
   const ref = useRef(null);
+  const chartRef = useRef(null);
 
   useEffect(() => {
     if (!ref.current || !spec) return;
     const chart = echarts.init(ref.current);
+    chartRef.current = chart;
     const option = {
       ...LIGHT_BASE,
       ...spec,
@@ -159,8 +161,25 @@ export function ChartBox({ spec, title }) {
     return () => {
       window.removeEventListener("resize", onResize);
       chart.dispose();
+      chartRef.current = null;
     };
   }, [spec, title]);
 
-  return <div ref={ref} className="chart-box" />;
+  const downloadPng = () => {
+    const url = chartRef.current?.getDataURL({ pixelRatio: 2, backgroundColor: "#ffffff" });
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(title || "chart").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)}.png`;
+    a.click();
+  };
+
+  return (
+    <div className="chart-wrap">
+      <div ref={ref} className="chart-box" />
+      <button type="button" className="chart-download" onClick={downloadPng}>
+        下载 PNG
+      </button>
+    </div>
+  );
 }

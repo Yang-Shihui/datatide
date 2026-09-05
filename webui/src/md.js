@@ -45,3 +45,39 @@ export function mdToHtml(md) {
   }
   return out.join("");
 }
+
+/** 把 markdown 拆成文本段与表格段；表格段返回结构化数据供渲染与 CSV 导出 */
+export function splitMd(md) {
+  const lines = md.split("\n");
+  const segments = [];
+  let buf = [];
+  let i = 0;
+  const isTableLine = (l) => /^\|.*\|/.test(l);
+  const isSep = (l) => /^\|[-\s|]+\|$/.test(l);
+  const cells = (l) => l.split("|").slice(1, -1).map((c) => c.trim());
+  while (i < lines.length) {
+    if (isTableLine(lines[i]) && i + 1 < lines.length && isSep(lines[i + 1])) {
+      if (buf.length) {
+        segments.push({ type: "md", text: buf.join("\n") });
+        buf = [];
+      }
+      const header = cells(lines[i]);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && isTableLine(lines[i])) rows.push(cells(lines[i++]));
+      segments.push({ type: "table", header, rows });
+      continue;
+    }
+    buf.push(lines[i++]);
+  }
+  if (buf.length) segments.push({ type: "md", text: buf.join("\n") });
+  return segments;
+}
+
+export function tableToCsv(header, rows) {
+  const esc = (v) => {
+    const s2 = String(v ?? "");
+    return /[",\n]/.test(s2) ? '"' + s2.replace(/"/g, '""') + '"' : s2;
+  };
+  return [header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
+}

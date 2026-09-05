@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, postSSE } from "../api.js";
 import { ChartBox } from "../components/ChartBox.jsx";
+import { TableExports } from "../components/TableExports.jsx";
 import { mdToHtml } from "../md.js";
 
 export function Chat({ user, notify }) {
@@ -185,6 +186,7 @@ function MessageBlock({ block }) {
       {block.charts?.map((c) => (
         <ChartBox key={c.id} spec={c.spec} title={c.title} />
       ))}
+      {!block.live && block.role === "assistant" && <TableExports text={block.text} />}
     </>
   );
 }
