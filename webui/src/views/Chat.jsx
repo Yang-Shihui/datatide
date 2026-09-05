@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api, postSSE } from "../api.js";
 import { ChartBox } from "../components/ChartBox.jsx";
 import { TableExports } from "../components/TableExports.jsx";
-import { mdToHtml } from "../md.js";
+import { Markdown } from "../components/Markdown.jsx";
+import { ThinkingBlock } from "../components/ThinkingBlock.jsx";
 
 const SKILL_RE = /^\/([a-z0-9-]+)(?:\s+([\s\S]*))?$/;
 
@@ -46,6 +47,7 @@ export function Chat({ user, notify }) {
           role: m.role,
           text: m.content,
           charts: m.role === "assistant" ? JSON.parse(m.extras_json || "{}").charts || [] : [],
+          thinking: m.role === "assistant" ? JSON.parse(m.extras_json || "{}").thinking || "" : "",
         })),
       );
       stickToBottomRef.current = true;
@@ -115,12 +117,16 @@ export function Chat({ user, notify }) {
 
     // 回合结束后以服务端持久化消息为准（本地追加的消息没有 id，编辑重发/截断需要 id）
     const finalize = async () => {
-      const toLocal = (m) => ({
-        id: m.id,
-        role: m.role,
-        text: m.content,
-        charts: m.role === "assistant" ? JSON.parse(m.extras_json || "{}").charts || [] : [],
-      });
+      const toLocal = (m) => {
+        const extras = m.role === "assistant" ? JSON.parse(m.extras_json || "{}") : {};
+        return {
+          id: m.id,
+          role: m.role,
+          text: m.content,
+          charts: extras.charts || [],
+          thinking: extras.thinking || "",
+        };
+      };
       try {
         let sid = sessionId;
         if (sid == null) {
@@ -357,7 +363,10 @@ function MessageBlock({ block, onCopy, onEdit }) {
           {block.live && !block.text ? (
             <span className="typing-dots"><span /><span /><span /></span>
           ) : (
-            <div dangerouslySetInnerHTML={{ __html: mdToHtml(block.text || "") }} />
+            <>
+              {block.thinking ? <ThinkingBlock text={block.thinking} /> : null}
+              <Markdown text={block.text || ""} />
+            </>
           )}
         </div>
       </div>

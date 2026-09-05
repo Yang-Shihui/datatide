@@ -374,7 +374,7 @@ async function startChat(
 
   try {
     const outcome = await runTurn(agent, message, onEvent);
-    ctx.meta.addMessage(sessionId, "assistant", outcome.text, JSON.stringify({ charts: outcome.charts }));
+    ctx.meta.addMessage(sessionId, "assistant", outcome.text, JSON.stringify({ charts: outcome.charts, thinking: outcome.thinking }));
     ctx.meta.touchChatSession(sessionId);
     send("done", { text: outcome.text });
   } catch (err) {

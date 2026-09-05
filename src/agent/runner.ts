@@ -11,6 +11,7 @@ export type TurnEvent =
 
 export interface TurnOutcome {
   text: string;
+  thinking: string;
   charts: { id: string; title: string; spec: unknown }[];
 }
 
@@ -25,6 +26,7 @@ export async function runTurn(
   onEvent: (event: TurnEvent) => void,
 ): Promise<TurnOutcome> {
   let text = "";
+  let thinking = "";
   let chartsEmitted = 0;
   agent.charts.length = 0; // charts are per-turn state
 
@@ -36,6 +38,7 @@ export async function runTurn(
           text += e.delta;
           onEvent({ type: "text", delta: e.delta });
         } else if (e.type === "thinking_delta") {
+          thinking += e.delta;
           onEvent({ type: "thinking", delta: e.delta });
         }
         break;
@@ -83,5 +86,5 @@ export async function runTurn(
     onEvent({ type: "chart", chart });
   }
   onEvent({ type: "done", text });
-  return { text, charts: [...agent.charts] };
+  return { text, thinking, charts: [...agent.charts] };
 }
