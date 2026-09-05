@@ -228,6 +228,16 @@ export class MetaStore {
     return row?.user_id;
   }
 
+  setMessageExtras(messageId: number, extrasJson: string): void {
+    this.db.prepare("UPDATE chat_messages SET extras_json = ? WHERE id = ?").run(extrasJson, messageId);
+  }
+
+  getMessage(messageId: number): { id: number; session_id: number; role: string; content: string; extras_json: string | null } | undefined {
+    return this.db
+      .prepare("SELECT id, session_id, role, content, extras_json FROM chat_messages WHERE id = ?")
+      .get(messageId) as { id: number; session_id: number; role: string; content: string; extras_json: string | null } | undefined;
+  }
+
   /** 删除 sessionId 下 id >= messageId 的消息（编辑重发的回退语义） */
   truncateMessagesFrom(sessionId: number, messageId: number): number {
     const info = this.db

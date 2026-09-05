@@ -176,8 +176,8 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
   // ---- chat ----
   app.post("/api/chat", (req, res) => guard(res, async () => {
     const user = currentUser(req)!;
-    const { session_id: sessionId, message, skill: skillName } = req.body as {
-      session_id?: number; message: string; skill?: string;
+    const { session_id: sessionId, message, skill: skillName, edit_message_id: editMessageId } = req.body as {
+      session_id?: number; message: string; skill?: string; edit_message_id?: number;
     };
     if (!message?.trim()) return res.status(400).json({ error: "message 不能为空" });
     let skillBody: string | undefined;
@@ -199,6 +199,26 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
 
     const agent = await getOrCreateAgent(ctx, user.username, id);
     if (!agent) return res.status(400).json({ error: "当前用户没有被授权任何数据集" });
+
+    if (editMessageId != null) {
+      // 编辑重发：把内存会话分支回退到该用户消息之前（更早的轮次与上下文原样保留），
+      // DB 删除该消息及其后所有消息，然后按普通回合重新生成
+      const target = meta.getMessage(Number(editMessageId));
+      if (!target || target.session_id !== id) return res.status(400).json({ error: "要编辑的消息不存在" });
+      if (target.role !== "user") return res.status(400).json({ error: "只能编辑用户消息" });
+      let piEntry: string | undefined;
+      try {
+        piEntry = JSON.parse(target.extras_json || "{}").piEntry;
+      } catch {
+        piEntry = undefined;
+      }
+      const sm = agent.session.sessionManager;
+      const entry = piEntry ? sm.getEntries().find((e) => e.id === piEntry) : undefined;
+      if (entry?.parentId) sm.branch(entry.parentId);
+      else sm.resetLeaf(); // 首条消息或旧消息无 piEntry 映射（如服务重启过）：回退到会话起点
+      meta.truncateMessagesFrom(id, Number(editMessageId));
+    }
+
     await startChat(ctx, req, res, id, agent, message, skillBody ? { name: skillName!, body: skillBody } : undefined);
   }));
 
@@ -326,7 +346,7 @@ async function startChat(
   ctx.busy.add(sessionId);
   // 存库的是带技能标记的原文（回放时能看出技能来源），实际发给模型的 prompt 注入技能正文
   const storedMessage = skill ? `/skill:${skill.name} ${message}`.trim() : message;
-  ctx.meta.addMessage(sessionId, "user", storedMessage);
+  const userMessageId = ctx.meta.addMessage(sessionId, "user", storedMessage);
   if (skill) {
     message = `用户通过技能面板选择了技能「${skill.name}」，以下是该技能的方法论，请严格按其框架执行：\n\n<skill>\n${skill.body}\n</skill>\n\n用户问题：${message}`;
   }
@@ -360,6 +380,9 @@ async function startChat(
     }
   });
 
+  const sm = agent.session.sessionManager;
+  const beforeEntryIds = new Set(sm.getEntries().map((e) => e.id));
+
   const onEvent = (event: TurnEvent) => {
     switch (event.type) {
       case "text": send("text", { delta: event.delta }); break;
@@ -374,6 +397,13 @@ async function startChat(
 
   try {
     const outcome = await runTurn(agent, message, onEvent);
+    // 记录本轮用户消息在 pi 会话里的条目 id——编辑重发时按它做分支回退
+    const newEntry = sm
+      .getEntries()
+      .find((e) => !beforeEntryIds.has(e.id) && e.type === "message" && (e as { message?: { role?: string } }).message?.role === "user");
+    if (newEntry) {
+      ctx.meta.setMessageExtras(userMessageId, JSON.stringify({ piEntry: newEntry.id }));
+    }
     ctx.meta.addMessage(sessionId, "assistant", outcome.text, JSON.stringify({ charts: outcome.charts, thinking: outcome.thinking }));
     ctx.meta.touchChatSession(sessionId);
     send("done", { text: outcome.text });

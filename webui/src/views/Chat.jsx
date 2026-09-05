@@ -16,6 +16,7 @@ export function Chat({ user, notify }) {
   const [busy, setBusy] = useState(false);
   const [liveBlocks, setLiveBlocks] = useState([]);
   const [pickerIdx, setPickerIdx] = useState(-1); // -1 = 关闭
+  const [editing, setEditing] = useState(null); // { id, text } 行内编辑中的用户消息
   const inputRef = useRef(null);
   const abortRef = useRef(null);
   const stickToBottomRef = useRef(true);
@@ -65,11 +66,12 @@ export function Chat({ user, notify }) {
 
   const refreshSessions = () => api.get("/api/sessions").then(setSessions).catch(() => {});
 
-  const send = async (textArg) => {
+  const send = async (textArg, editMessageId) => {
     const raw = (textArg ?? input).trim();
     if (!raw || busy) return;
     setInput("");
     setPickerIdx(-1);
+    setEditing(null);
     stickToBottomRef.current = true;
 
     // /技能名 问题 → 显式调用技能
@@ -92,7 +94,12 @@ export function Chat({ user, notify }) {
     try {
       await postSSE(
         "/api/chat",
-        { session_id: sessionId, message: question, ...(skill ? { skill } : {}) },
+        {
+          session_id: sessionId,
+          message: question,
+          ...(skill ? { skill } : {}),
+          ...(editMessageId != null ? { edit_message_id: editMessageId } : {}),
+        },
         (event, data) => {
           const cur = blocks[blocks.length - 1];
           if (event === "text") cur.text += data.delta;
@@ -165,26 +172,17 @@ export function Chat({ user, notify }) {
     }
   };
 
-  /** 编辑重发：回退到该消息（服务端截断 + 销毁内存 agent），原文回填输入框 */
-  const editResend = async (msg) => {
+  /** 行内编辑：点"编辑"不动任何消息；提交后该轮替换重生成，之前的轮次与上下文原样保留 */
+  const startEdit = (msg) => {
     if (busy) return;
-    if (sessionId == null) {
-      setInput(msg.text);
-      inputRef.current?.focus();
-      return;
-    }
-    try {
-      await api.post(`/api/sessions/${sessionId}/truncate`, { message_id: msg.id });
-      const idx = messages.findIndex((x) => x.id === msg.id);
-      setMessages(messages.slice(0, idx));
-      setInput(msg.text.replace(/^\/skill:([a-z0-9-]+)\s*/, "/$1 "));
-      stickToBottomRef.current = true;
-      inputRef.current?.focus();
-      notify(`已回退，编辑后重新发送（其后的 ${messages.length - idx} 条消息已移除）`);
-      refreshSessions();
-    } catch (err) {
-      notify(err.message, true);
-    }
+    setEditing({ id: msg.id, text: msg.text.replace(/^\/skill:([a-z0-9-]+)\s*/, "/$1 ") });
+  };
+
+  const submitEdit = (msgId, newText) => {
+    const idx = messages.findIndex((x) => x.id === msgId);
+    if (idx >= 0) setMessages(messages.slice(0, idx)); // 乐观移除旧轮次，其余消息与上下文不动
+    stickToBottomRef.current = true;
+    void send(newText, msgId);
   };
 
   // "/" 技能面板：输入是以 / 开头的纯命令 token（还没打空格）时弹出
@@ -274,7 +272,15 @@ export function Chat({ user, notify }) {
             </div>
           )}
           {blocks.map((b, i) => (
-            <MessageBlock key={b.id ?? `live-${i}`} block={b} onCopy={copyMessage} onEdit={busy ? undefined : editResend} />
+            <MessageBlock
+              key={b.id ?? `live-${i}`}
+              block={b}
+              onCopy={copyMessage}
+              onEdit={busy ? undefined : startEdit}
+              editing={editing}
+              onSubmitEdit={submitEdit}
+              onCancelEdit={() => setEditing(null)}
+            />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -323,7 +329,7 @@ export function Chat({ user, notify }) {
   );
 }
 
-function MessageBlock({ block, onCopy, onEdit }) {
+function MessageBlock({ block, onCopy, onEdit, editing, onSubmitEdit, onCancelEdit }) {
   return (
     <>
       {block.trace?.length > 0 && (
@@ -350,8 +356,8 @@ function MessageBlock({ block, onCopy, onEdit }) {
                 </svg>
                 复制
               </button>
-              {block.role === "user" && !block.live && onEdit && (
-                <button type="button" title="编辑并重新发送（其后的对话将被移除）" onClick={() => onEdit(block)}>
+              {block.role === "user" && !block.live && onEdit && editing?.id !== block.id && (
+                <button type="button" title="编辑并重新生成回答（之前的消息不受影响）" onClick={() => onEdit(block)}>
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                   </svg>
@@ -360,12 +366,22 @@ function MessageBlock({ block, onCopy, onEdit }) {
               )}
             </span>
           </div>
-          {block.live && !block.text ? (
-            <span className="typing-dots"><span /><span /><span /></span>
+          {editing != null && block.id != null && editing.id === block.id ? (
+            <InlineEdit
+              initial={editing.text}
+              onCancel={() => onCancelEdit()}
+              onSubmit={(text) => onSubmitEdit(block.id, text)}
+            />
           ) : (
             <>
-              {block.thinking ? <ThinkingBlock text={block.thinking} /> : null}
-              <Markdown text={block.text || ""} />
+              {block.live && !block.text ? (
+                <span className="typing-dots"><span /><span /><span /></span>
+              ) : (
+                <>
+                  {block.thinking ? <ThinkingBlock text={block.thinking} /> : null}
+                  <Markdown text={block.text || ""} />
+                </>
+              )}
             </>
           )}
         </div>
@@ -375,5 +391,46 @@ function MessageBlock({ block, onCopy, onEdit }) {
       ))}
       {block.role === "assistant" && !block.live && <TableExports text={block.text} />}
     </>
+  );
+}
+
+function InlineEdit({ initial, onCancel, onSubmit }) {
+  const [text, setText] = useState(initial);
+  const ref = useRef(null);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.setSelectionRange(text.length, text.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const submit = () => {
+    const t = text.trim();
+    if (t) onSubmit(t);
+  };
+  return (
+    <div className="inline-edit">
+      <textarea
+        ref={ref}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+          if (e.key === "Escape") onCancel();
+        }}
+      />
+      <div className="inline-edit-actions">
+        <button type="button" className="ghost" onClick={onCancel}>
+          取消
+        </button>
+        <button type="button" className="primary" onClick={submit} disabled={!text.trim()}>
+          重新生成
+        </button>
+      </div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+        提交后此消息及其后的回答将被替换，之前的消息与上下文保持不变
+      </div>
+    </div>
   );
 }
