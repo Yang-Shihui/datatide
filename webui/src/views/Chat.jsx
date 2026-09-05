@@ -64,8 +64,8 @@ export function Chat({ user, notify }) {
           else if (event === "thinking") {
             if (!cur.thinking) cur.thinking = "";
             cur.thinking += data.delta;
-          } else if (event === "tool_start") cur.trace.push(`▸ ${data.toolName}(${JSON.stringify(data.args ?? {}).slice(0, 90)})`);
-          else if (event === "tool_end") cur.trace.push(`${data.isError ? "✗" : "✓"} ${data.toolName}`);
+          } else if (event === "tool_start") cur.trace.push(`${data.toolName}(${JSON.stringify(data.args ?? {}).slice(0, 90)})`);
+          else if (event === "tool_end") cur.trace.push(`${data.isError ? "✗ " : "✓ "}${data.toolName}`);
           else if (event === "chart") cur.charts.push(data);
           else if (event === "error") cur.text += `\n\n⚠ ${data.message}`;
           touch();
@@ -117,8 +117,18 @@ export function Chat({ user, notify }) {
         <div className="messages">
           {blocks.length === 0 && (
             <div className="empty-center">
-              <div style={{ fontSize: 15, color: "var(--text)" }}>问点数据问题</div>
-              <div>例如：华东区 2026 年 7-8 月销售额同比如何？可能是什么原因？</div>
+              <div className="title">问点数据问题</div>
+              <div className="suggestions">
+                {[
+                  "华东区2026年7-8月销售额同比如何？可能是什么原因？",
+                  "2026年各区域销售额占比",
+                  "对比线上和线下渠道的月度趋势",
+                ].map((q) => (
+                  <button key={q} className="suggestion-chip" onClick={() => { setInput(q); }}>
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           {blocks.map((b, i) => (
@@ -152,18 +162,21 @@ function MessageBlock({ block }) {
     <>
       {block.trace?.length > 0 && (
         <div className="tool-trace">
-          {block.trace.map((t, i) => (
-            <div key={i} className={t.endsWith("✗") ? "err" : ""}>
-              ▸ {t}
-            </div>
-          ))}
+          {block.trace.map((t, i) => {
+            const failed = t.startsWith("✗");
+            return (
+              <span key={i} className={`tool-chip${failed ? " err" : ""}`}>
+                <span className="dot" /> {failed ? t.slice(2) : t}
+              </span>
+            );
+          })}
         </div>
       )}
       <div className={`msg ${block.role}`}>
         <div className="bubble">
           <div className="role">{block.role === "user" ? "你" : "分析助手"}</div>
           {block.live && !block.text ? (
-            <span className="muted">思考与查询中…</span>
+            <span className="typing-dots"><span /><span /><span /></span>
           ) : (
             <div dangerouslySetInnerHTML={{ __html: mdToHtml(block.text || "") }} />
           )}

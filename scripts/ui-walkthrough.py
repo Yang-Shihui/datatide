@@ -45,6 +45,7 @@ with sync_playwright() as p:
     # datasets page
     page.click("text=数据集")
     page.wait_for_selector(".ds-grid", timeout=8000)
+    page.wait_for_timeout(600)
     page.click("text=查看 schema")
     page.wait_for_selector(".schema-table", timeout=8000)
     page.screenshot(path=f"{OUT}/datasets.png")
@@ -52,6 +53,7 @@ with sync_playwright() as p:
     # reports page
     page.click("text=报告")
     page.wait_for_selector(".page", timeout=8000)
+    page.wait_for_timeout(600)
     page.screenshot(path=f"{OUT}/reports.png")
 
     print(json.dumps({

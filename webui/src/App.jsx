@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { api, postSSE, getToken, setToken, clearToken } from "./api.js";
-import { ChartBox } from "./components/ChartBox.jsx";
+import { IconChat, IconDatabase, IconReport } from "./components/Icons.jsx";
 import { mdToHtml } from "./md.js";
 import { Chat } from "./views/Chat.jsx";
 import { Datasets } from "./views/Datasets.jsx";
 import { Reports } from "./views/Reports.jsx";
 
 const TABS = [
-  ["chat", "对话分析"],
-  ["datasets", "数据集"],
-  ["reports", "报告"],
+  ["chat", "对话分析", IconChat],
+  ["datasets", "数据集", IconDatabase],
+  ["reports", "报告", IconReport],
 ];
 
 export default function App() {
@@ -54,12 +54,13 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          datatide<span className="dot">·</span>数据分析控制台
+          <span className="mark">d</span>
+          datatide <small>数据分析控制台</small>
         </div>
         <nav className="nav">
-          {TABS.map(([id, label]) => (
+          {TABS.map(([id, label, Icon]) => (
             <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}>
-              {label}
+              <Icon /> {label}
             </button>
           ))}
         </nav>
@@ -107,9 +108,12 @@ function Login({ onLogin, notify }) {
   return (
     <div className="login-wrap">
       <form className="panel login-card" onSubmit={submit}>
-        <h1>
-          datatide<span style={{ color: "var(--accent)" }}>·</span>
-        </h1>
+        <div className="logo-row">
+          <span className="brand">
+            <span className="mark">d</span>
+          </span>
+          <h1>datatide</h1>
+        </div>
         <div className="sub">自托管对话式 BI · 数据不出内网</div>
         <label>用户名</label>
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
