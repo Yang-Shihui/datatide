@@ -1,0 +1,33 @@
+{
+  "name": "bi-agent",
+  "version": "0.1.0",
+  "description": "Self-hosted conversational BI platform built on the Pi coding agent SDK",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "server": "tsx src/server.ts",
+    "cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:live": "BI_AGENT_LIVE=1 vitest run tests/live",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "1.5.5-r.4",
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@sinclair/typebox": "^0.34.52",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.23.12",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}

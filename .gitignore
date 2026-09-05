@@ -1,0 +1,11 @@
+node_modules/
+dist/
+static/
+data/datasets/*
+!data/datasets/.gitkeep
+data/meta.db
+*.duckdb
+*.duckdb.wal
+.env
+reports/*.md
+.DS_Store
