@@ -101,7 +101,7 @@ export class MetaStore {
   // ---- datasets ----
 
   createDataset(name: string, kind: DatasetKind, config: FileDatasetConfig | PostgresDatasetConfig, description: string): DatasetRow {
-    const info = this.db
+    this.db
       .prepare("INSERT INTO datasets (name, kind, config_json, description) VALUES (?, ?, ?, ?)")
       .run(name, kind, JSON.stringify(config), description);
     return this.getDataset(name)!;
@@ -129,6 +129,161 @@ export class MetaStore {
       description: row.description as string,
       created_at: row.created_at as string,
     };
+  }
+
+  // ---- users & access ----
+
+  createUser(username: string, passwordHash: string, role: "admin" | "analyst" | "viewer"): UserRow {
+    this.db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)").run(username, passwordHash, role);
+    return this.getUser(username)!;
+  }
+
+  getUser(username: string): UserRow | undefined {
+    return this.db.prepare("SELECT * FROM users WHERE username = ?").get(username) as UserRow | undefined;
+  }
+
+  getUserById(id: number): UserRow | undefined {
+    return this.db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+  }
+
+  listUsers(): UserRow[] {
+    return this.db.prepare("SELECT * FROM users ORDER BY id").all() as UserRow[];
+  }
+
+  /** Dataset names a user may query. Admins see everything. */
+  datasetsForUser(user: UserRow): string[] {
+    if (user.role === "admin") return this.listDatasets().map((d) => d.name);
+    const rows = this.db
+      .prepare(
+        "SELECT d.name FROM dataset_access a JOIN datasets d ON d.id = a.dataset_id WHERE a.user_id = ? ORDER BY d.name",
+      )
+      .all(user.id) as { name: string }[];
+    return rows.map((r) => r.name);
+  }
+
+  grantDataset(username: string, datasetName: string): void {
+    const user = this.getUser(username);
+    const ds = this.getDataset(datasetName);
+    if (!user || !ds) throw new Error("用户或数据集不存在");
+    this.db
+      .prepare("INSERT OR IGNORE INTO dataset_access (dataset_id, user_id) VALUES (?, ?)")
+      .run(ds.id, user.id);
+  }
+
+  revokeDataset(username: string, datasetName: string): void {
+    const user = this.getUser(username);
+    const ds = this.getDataset(datasetName);
+    if (!user || !ds) throw new Error("用户或数据集不存在");
+    this.db.prepare("DELETE FROM dataset_access WHERE dataset_id = ? AND user_id = ?").run(ds.id, user.id);
+  }
+
+  // ---- auth sessions ----
+
+  createAuthSession(tokenHash: string, userId: number, expiresAtISO: string): void {
+    this.db.prepare("INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)").run(tokenHash, userId, expiresAtISO);
+  }
+
+  authSessionUser(tokenHash: string): UserRow | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT u.* FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?",
+      )
+      .get(tokenHash, new Date().toISOString()) as UserRow | undefined;
+    return row;
+  }
+
+  deleteAuthSession(tokenHash: string): void {
+    this.db.prepare("DELETE FROM auth_sessions WHERE token_hash = ?").run(tokenHash);
+  }
+
+  // ---- chat sessions ----
+
+  createChatSession(userId: number, title: string): number {
+    const info = this.db.prepare("INSERT INTO chat_sessions (user_id, title) VALUES (?, ?)").run(userId, title);
+    return Number(info.lastInsertRowid);
+  }
+
+  listChatSessions(userId: number): { id: number; title: string; updated_at: string }[] {
+    return this.db
+      .prepare("SELECT id, title, updated_at FROM chat_sessions WHERE user_id = ? ORDER BY updated_at DESC")
+      .all(userId) as { id: number; title: string; updated_at: string }[];
+  }
+
+  touchChatSession(id: number, title?: string): void {
+    if (title) this.db.prepare("UPDATE chat_sessions SET title = ?, updated_at = ? WHERE id = ?").run(title, new Date().toISOString(), id);
+    else this.db.prepare("UPDATE chat_sessions SET updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
+  }
+
+  chatSessionOwner(id: number): number | undefined {
+    const row = this.db.prepare("SELECT user_id FROM chat_sessions WHERE id = ?").get(id) as { user_id: number } | undefined;
+    return row?.user_id;
+  }
+
+  addMessage(sessionId: number, role: "user" | "assistant", content: string, extrasJson?: string): void {
+    this.db
+      .prepare("INSERT INTO chat_messages (session_id, role, content, extras_json) VALUES (?, ?, ?, ?)")
+      .run(sessionId, role, content, extrasJson);
+  }
+
+  listMessages(sessionId: number): { id: number; role: string; content: string; extras_json: string | null; created_at: string }[] {
+    return this.db
+      .prepare("SELECT id, role, content, extras_json, created_at FROM chat_messages WHERE session_id = ? ORDER BY id")
+      .all(sessionId) as { id: number; role: string; content: string; extras_json: string | null; created_at: string }[];
+  }
+
+  // ---- reports ----
+
+  createReportConfig(userId: number, datasetName: string, title: string, prompt: string, cron: string): number {
+    const ds = this.getDataset(datasetName);
+    if (!ds) throw new Error("数据集不存在");
+    const info = this.db
+      .prepare("INSERT INTO report_configs (user_id, dataset_id, title, prompt, cron) VALUES (?, ?, ?, ?, ?)")
+      .run(userId, ds.id, title, prompt, cron);
+    return Number(info.lastInsertRowid);
+  }
+
+  listReportConfigs(userId?: number) {
+    const sql = `
+      SELECT r.id, r.title, r.prompt, r.cron, r.enabled, r.last_run_at, d.name AS dataset_name, u.username
+      FROM report_configs r JOIN datasets d ON d.id = r.dataset_id JOIN users u ON u.id = r.user_id
+      ${userId ? "WHERE r.user_id = ?" : ""} ORDER BY r.id`;
+    return (userId ? this.db.prepare(sql).all(userId) : this.db.prepare(sql).all()) as {
+      id: number; title: string; prompt: string; cron: string; enabled: number;
+      last_run_at: string | null; dataset_name: string; username: string;
+    }[];
+  }
+
+  getReportConfig(id: number) {
+    return this.listReportConfigs().find((r) => r.id === id);
+  }
+
+  setReportEnabled(id: number, enabled: boolean): void {
+    this.db.prepare("UPDATE report_configs SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, id);
+  }
+
+  markReportRun(id: number, configId: number, status: "success" | "error", outputPath: string | null, error: string | null): void {
+    this.db
+      .prepare("UPDATE report_runs SET status = ?, finished_at = ?, output_path = ?, error = ? WHERE id = ?")
+      .run(status, new Date().toISOString(), outputPath, error, id);
+    if (status === "success") {
+      this.db.prepare("UPDATE report_configs SET last_run_at = ? WHERE id = ?").run(new Date().toISOString(), configId);
+    }
+  }
+
+  startReportRun(configId: number): number {
+    const info = this.db.prepare("INSERT INTO report_runs (config_id) VALUES (?)").run(configId);
+    return Number(info.lastInsertRowid);
+  }
+
+  listReportRuns(configId?: number) {
+    if (configId) {
+      return this.db.prepare("SELECT * FROM report_runs WHERE config_id = ? ORDER BY id DESC LIMIT 50").all(configId) as Record<string, unknown>[];
+    }
+    return this.db.prepare("SELECT * FROM report_runs ORDER BY id DESC LIMIT 100").all() as Record<string, unknown>[];
+  }
+
+  getReportRun(id: number) {
+    return this.db.prepare("SELECT * FROM report_runs WHERE id = ?").get(id) as Record<string, unknown> | undefined;
   }
 
   close(): void {
