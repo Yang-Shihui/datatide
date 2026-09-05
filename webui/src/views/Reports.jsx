@@ -100,7 +100,7 @@ export function Reports({ user, notify, wrap }) {
             {runs.list.map((run) => (
               <div key={run.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
                 <span className={`badge ${run.status === "success" ? "ok" : run.status === "error" ? "err" : "run"}`}>{run.status}</span>
-                <span className="mono muted" style={{ fontSize: 12 }}>
+                <span className="mono muted" style={{ fontSize: 13 }}>
                   {run.started_at}
                 </span>
                 {run.status === "success" && (
@@ -108,7 +108,7 @@ export function Reports({ user, notify, wrap }) {
                     查看报告
                   </button>
                 )}
-                {run.error && <span className="error-text" style={{ fontSize: 12 }}>{run.error}</span>}
+                {run.error && <span className="error-text" style={{ fontSize: 13 }}>{run.error}</span>}
               </div>
             ))}
             {content && <div className="panel md-view" style={{ marginTop: 14 }} dangerouslySetInnerHTML={{ __html: content.html }} />}

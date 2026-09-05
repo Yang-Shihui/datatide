@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, postSSE, getToken, setToken, clearToken } from "./api.js";
 import { IconChat, IconDatabase, IconReport } from "./components/Icons.jsx";
+import { LogoMark } from "./components/Logo.jsx";
 import { mdToHtml } from "./md.js";
 import { Chat } from "./views/Chat.jsx";
 import { Datasets } from "./views/Datasets.jsx";
@@ -54,7 +55,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="mark">d</span>
+          <LogoMark />
           datatide <small>数据分析控制台</small>
         </div>
         <nav className="nav">
@@ -109,9 +110,7 @@ function Login({ onLogin, notify }) {
     <div className="login-wrap">
       <form className="panel login-card" onSubmit={submit}>
         <div className="logo-row">
-          <span className="brand">
-            <span className="mark">d</span>
-          </span>
+          <LogoMark size={34} />
           <h1>datatide</h1>
         </div>
         <div className="sub">自托管对话式 BI · 数据不出内网</div>

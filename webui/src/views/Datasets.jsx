@@ -4,6 +4,7 @@ import { api } from "../api.js";
 export function Datasets({ user, notify, wrap, refreshMe }) {
   const [datasets, setDatasets] = useState([]);
   const [schema, setSchema] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
   const [form, setForm] = useState({ name: "", kind: "file", format: "csv", description: "", dsn: "", file: null });
 
   const reload = () => api.get("/api/datasets").then(setDatasets).catch((e) => notify(e.message, true));
@@ -35,8 +36,8 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
   });
 
   const remove = wrap(async (name) => {
-    if (!confirm(`确认删除数据集 ${name}？`)) return;
     await api.delete(`/api/datasets/${name}`);
+    setConfirmDel(null);
     if (schema?.name === name) setSchema(null);
     reload();
     refreshMe();
@@ -106,7 +107,7 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                 {d.name}
                 <span className="kind">{d.kind}</span>
               </h3>
-              <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+              <div className="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>
                 {d.description || "（无描述）"} · {d.authorized ? "已授权" : "未授权"}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -114,7 +115,7 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                   查看 schema
                 </button>
                 {isAdmin && (
-                  <button className="ghost danger" onClick={() => remove(d.name)}>
+                  <button className="ghost danger" onClick={() => setConfirmDel(d.name)}>
                     删除
                   </button>
                 )}
@@ -159,6 +160,22 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
           </div>
         )}
       </div>
+      {confirmDel && (
+        <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>删除数据集</h3>
+            <p>
+              确认删除 <b className="mono">{confirmDel}</b>？该操作不可恢复（分析数据文件保留在服务器上，仅移除注册）。
+            </p>
+            <div className="actions">
+              <button className="ghost" onClick={() => setConfirmDel(null)}>取消</button>
+              <button className="primary" style={{ background: "var(--err)" }} onClick={() => remove(confirmDel)}>
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

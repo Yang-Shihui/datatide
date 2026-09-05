@@ -6,10 +6,16 @@ const PALETTE = ["#1e40af", "#d97706", "#0ea5e9", "#059669", "#7c3aed", "#dc2626
 const LIGHT_BASE = {
   color: PALETTE,
   textStyle: { color: "#475569" },
-  grid: { left: 70, right: 30, top: 64, bottom: 48 },
+  grid: { left: 70, right: 30, top: 88, bottom: 48 },
   // title left / legend right：agent 生成的 spec 常把长标题和标注塞进顶部，
   // 钉死布局避免互相遮挡
-  title: { left: 8, top: 4, textStyle: { color: "#0f172a", fontSize: 13, fontWeight: 600 } },
+  title: {
+    left: 8,
+    top: 10,
+    itemGap: 6,
+    textStyle: { color: "#0f172a", fontSize: 14, fontWeight: 600, lineHeight: 20 },
+    subtextStyle: { color: "#94a3b8", fontSize: 12, lineHeight: 16 },
+  },
   legend: { top: 4, right: 8, textStyle: { color: "#475569" }, itemWidth: 14, itemHeight: 8 },
   tooltip: {
     trigger: "axis",
@@ -66,9 +72,9 @@ function polishAxis(axis) {
     const value = a.type === "value";
     if (!value && a.axisLine === undefined) a.axisLine = { lineStyle: { color: "#cbd5e1" } };
     if (a.axisTick === undefined) a.axisTick = { show: false };
-    if (a.axisLabel === undefined) a.axisLabel = { color: "#94a3b8", fontSize: 11 };
+    if (a.axisLabel === undefined) a.axisLabel = { color: "#64748b", fontSize: 12 };
     if (value && a.splitLine === undefined) a.splitLine = { lineStyle: { color: "#eef2f7" } };
-    if (a.nameTextStyle === undefined) a.nameTextStyle = { color: "#94a3b8", fontSize: 11 };
+    if (a.nameTextStyle === undefined) a.nameTextStyle = { color: "#94a3b8", fontSize: 12 };
     return a;
   };
   return Array.isArray(axis) ? axis.map(apply) : apply(axis);
@@ -84,7 +90,7 @@ export function ChartBox({ spec, title }) {
       ...LIGHT_BASE,
       ...spec,
       // 布局钉点放在 spec 展开之后：agent 的 spec 不能破坏顶带布局
-      title: { ...LIGHT_BASE.title, ...(spec.title || { text: title }) },
+      title: { ...LIGHT_BASE.title, ...(spec.title || { text: title }), top: 10 },
       legend: { ...LIGHT_BASE.legend, ...(spec.legend || {}) },
       tooltip: (() => {
         const t = typeof spec.tooltip === "object" && spec.tooltip !== null ? { ...spec.tooltip } : {};
@@ -105,7 +111,7 @@ export function ChartBox({ spec, title }) {
           ...(ser.markPoint.label || {}),
           position: "top",
           distance: 10,
-          fontSize: 11,
+          fontSize: 12,
           color: "#0f172a",
           backgroundColor: "rgba(255,255,255,0.92)",
           padding: [2, 6],
