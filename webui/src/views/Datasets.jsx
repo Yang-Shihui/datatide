@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { Select } from "../components/Select.jsx";
 
 export function Datasets({ user, notify, wrap, refreshMe }) {
   const [datasets, setDatasets] = useState([]);
@@ -51,26 +52,36 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
         <h2>数据集</h2>
         {isAdmin && (
           <div className="panel ds-form">
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+            <div className="form-row">
               <div>
                 <label>数据集名（小写下划线）</label>
                 <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="sales_demo" />
               </div>
-              <div>
+              <div className="field">
                 <label>类型</label>
-                <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
-                  <option value="file">CSV / Parquet 文件</option>
-                  <option value="postgres">Postgres 连接</option>
-                </select>
+                <Select
+                  value={form.kind}
+                  onChange={(kind) => setForm({ ...form, kind })}
+                  options={[
+                    { value: "file", label: "CSV / Parquet 文件" },
+                    { value: "postgres", label: "Postgres 连接" },
+                  ]}
+                  ariaLabel="数据集类型"
+                />
               </div>
               {form.kind === "file" && (
                 <>
-                  <div>
+                  <div className="field">
                     <label>格式</label>
-                    <select value={form.format} onChange={(e) => setForm({ ...form, format: e.target.value })}>
-                      <option value="csv">CSV</option>
-                      <option value="parquet">Parquet</option>
-                    </select>
+                    <Select
+                      value={form.format}
+                      onChange={(format) => setForm({ ...form, format })}
+                      options={[
+                        { value: "csv", label: "CSV" },
+                        { value: "parquet", label: "Parquet" },
+                      ]}
+                      ariaLabel="文件格式"
+                    />
                   </div>
                   <div>
                     <label>文件（≤64MB）</label>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { Select } from "../components/Select.jsx";
 import { mdToHtml } from "../md.js";
 
 export function Reports({ user, notify, wrap }) {
@@ -47,23 +48,22 @@ export function Reports({ user, notify, wrap }) {
       <div className="page-inner">
         <h2>定时归因报告</h2>
         <div className="panel ds-form">
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-            <div>
+          <div className="form-row">
+            <div className="field">
               <label>数据集</label>
-              <select value={form.dataset} onChange={(e) => setForm({ ...form, dataset: e.target.value })}>
-                <option value="">选择…</option>
-                {user.datasets.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={form.dataset}
+                onChange={(dataset) => setForm({ ...form, dataset })}
+                options={user.datasets.map((d) => ({ value: d, label: d }))}
+                placeholder="选择…"
+                ariaLabel="报告数据集"
+              />
             </div>
-            <div>
+            <div className="field">
               <label>报告主题</label>
               <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="每周销售异动归因" />
             </div>
-            <div>
+            <div className="field">
               <label>cron 表达式</label>
               <input className="mono" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} style={{ width: 130 }} />
             </div>
