@@ -6,6 +6,7 @@ import { Engine } from "./engine/engine.ts";
 import { MetaStore } from "./store/meta.ts";
 import { DatasetRegistry } from "./agent/registry.ts";
 import { SkillStore } from "./agent/skills.ts";
+import { McpBridge, loadMcpConfig } from "./mcp/bridge.ts";
 import { createAnalysisSession, type AnalysisSession } from "./agent/agent.ts";
 import { runTurn, type TurnEvent } from "./agent/runner.ts";
 import { AuthService } from "./auth.ts";
@@ -20,6 +21,7 @@ interface Ctx {
   engine: Engine;
   registry: DatasetRegistry;
   skills: SkillStore;
+  mcp?: McpBridge;
   auth: AuthService;
   scheduler: ReportScheduler;
   /** one agent per chat session; created lazily, disposed on eviction */
@@ -46,12 +48,19 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
   const registry = new DatasetRegistry(engine, meta);
   await registry.ensureRegistered();
   const skills = SkillStore.create(resolve("skills"), process.env.DATATIDE_SKILLS_DIR);
+  let mcp: McpBridge | undefined;
+  try {
+    mcp = await McpBridge.create(loadMcpConfig(process.env.DATATIDE_MCP_CONFIG));
+  } catch (err) {
+    console.error("[mcp] 加载失败（继续无 MCP 启动）:", err instanceof Error ? err.message : err);
+  }
   const auth = new AuthService(meta);
   const scheduler = new ReportScheduler({
     meta,
     engine,
     registry,
     skills,
+    mcp,
     reportsDir,
     modelSpec: process.env.DATATIDE_MODEL,
   });
@@ -63,7 +72,7 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     console.log("[init] 已创建管理员 admin（密码来自 DATATIDE_ADMIN_PASSWORD）");
   }
 
-  const ctx: Ctx = { meta, engine, registry, skills, auth, scheduler, agents: new Map(), busy: new Set() };
+  const ctx: Ctx = { meta, engine, registry, skills, mcp, auth, scheduler, agents: new Map(), busy: new Set() };
 
   const app = express();
   app.disable("x-powered-by");
@@ -243,6 +252,7 @@ async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): 
     engine: ctx.engine,
     registry: ctx.registry,
     skills: ctx.skills,
+    mcp: ctx.mcp,
     modelSpec: process.env.DATATIDE_MODEL,
   });
   ctx.agents.set(sessionId, agent);

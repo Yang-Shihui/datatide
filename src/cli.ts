@@ -4,6 +4,7 @@ import { Engine } from "./engine/engine.ts";
 import { MetaStore } from "./store/meta.ts";
 import { DatasetRegistry } from "./agent/registry.ts";
 import { SkillStore } from "./agent/skills.ts";
+import { McpBridge, loadMcpConfig } from "./mcp/bridge.ts";
 import { createAnalysisSession, type AnalysisSession } from "./agent/agent.ts";
 import type { UserScope } from "./agent/tools.ts";
 
@@ -17,6 +18,12 @@ async function main() {
   const registry = new DatasetRegistry(engine, meta);
   await registry.ensureRegistered();
   const skills = SkillStore.create(resolve("skills"), process.env.DATATIDE_SKILLS_DIR);
+  let mcp: McpBridge | undefined;
+  try {
+    mcp = await McpBridge.create(loadMcpConfig(process.env.DATATIDE_MCP_CONFIG));
+  } catch (err) {
+    console.error("[mcp] 加载失败（继续无 MCP 启动）:", err instanceof Error ? err.message : err);
+  }
 
   const datasets = meta.listDatasets().map((d) => d.name);
   const scope: UserScope = { username: process.env.DATATIDE_USER ?? "cli", datasets };
@@ -25,6 +32,7 @@ async function main() {
     engine,
     registry,
     skills,
+    mcp,
     modelSpec: process.env.DATATIDE_MODEL,
   });
 

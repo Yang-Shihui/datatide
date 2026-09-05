@@ -5,6 +5,7 @@ import type { Engine } from "../engine/engine.ts";
 import type { MetaStore } from "../store/meta.ts";
 import type { DatasetRegistry } from "../agent/registry.ts";
 import type { SkillStore } from "../agent/skills.ts";
+import type { McpBridge } from "../mcp/bridge.ts";
 import { createAnalysisSession } from "../agent/agent.ts";
 import { runTurn } from "../agent/runner.ts";
 
@@ -13,6 +14,7 @@ export interface SchedulerDeps {
   engine: Engine;
   registry: DatasetRegistry;
   skills?: SkillStore;
+  mcp?: McpBridge;
   reportsDir: string;
   modelSpec?: string;
 }
@@ -77,6 +79,7 @@ export class ReportScheduler {
         engine: this.deps.engine,
         registry: this.deps.registry,
         skills: this.deps.skills,
+        mcp: this.deps.mcp,
         modelSpec: this.deps.modelSpec,
       });
       const prompt =

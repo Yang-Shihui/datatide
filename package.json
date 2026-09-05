@@ -16,6 +16,7 @@
   "dependencies": {
     "@duckdb/node-api": "1.5.5-r.4",
     "@earendil-works/pi-coding-agent": "0.83.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@sinclair/typebox": "^0.34.52",
     "better-sqlite3": "^13.0.3",
     "express": "^5.2.1",
