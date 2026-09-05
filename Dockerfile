@@ -25,6 +25,7 @@ ENV NODE_ENV=production \
 COPY package.json ./
 COPY src ./src
 COPY prompts ./prompts
+COPY skills ./skills
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=ui /app/webui/dist ./webui/dist
 RUN mkdir -p /app/data/datasets /app/reports

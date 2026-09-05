@@ -111,20 +111,39 @@ export function Chat({ user, notify }) {
     abortRef.current = null;
 
     setLiveBlocks([]);
-    setMessages((prev) => [
-      ...prev,
-      ...blocks
-        .filter((b) => b.text || b.charts.length)
-        .map((b) => ({
-          role: "assistant",
-          text: b.text,
-          charts: b.charts,
-          thinking: b.thinking,
-          trace: b.trace,
-        })),
-    ]);
     setBusy(false);
-    refreshSessions();
+
+    // 回合结束后以服务端持久化消息为准（本地追加的消息没有 id，编辑重发/截断需要 id）
+    const finalize = async () => {
+      const toLocal = (m) => ({
+        id: m.id,
+        role: m.role,
+        text: m.content,
+        charts: m.role === "assistant" ? JSON.parse(m.extras_json || "{}").charts || [] : [],
+      });
+      try {
+        let sid = sessionId;
+        if (sid == null) {
+          const s = await api.get("/api/sessions");
+          setSessions(s);
+          sid = s[0]?.id;
+          if (sid != null) setSessionId(sid);
+        }
+        if (sid != null) {
+          setMessages((await api.get(`/api/sessions/${sid}/messages`)).map(toLocal));
+          return;
+        }
+      } catch {
+        // 回退到本地合并（无 id，仅展示）
+      }
+      setMessages((prev) => [
+        ...prev,
+        ...blocks
+          .filter((b) => b.text || b.charts.length)
+          .map((b) => ({ role: "assistant", text: b.text, charts: b.charts, thinking: b.thinking, trace: b.trace })),
+      ]);
+    };
+    void finalize();
   };
 
   const stop = () => {
