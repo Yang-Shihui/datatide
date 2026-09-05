@@ -23,7 +23,7 @@ export class DatasetRegistry {
   async ensureRegistered(): Promise<void> {
     for (const ds of this.meta.listDatasets()) {
       if (ds.kind === "file") {
-        await this.engine.registerFile(ds.name, ds.config as { path: string; format: "csv" | "parquet" });
+        await this.engine.registerFile(ds.name, ds.config as { path: string; format: "csv" | "parquet" | "xlsx" });
       } else {
         await this.engine.registerPostgres(ds.name, ds.config as { dsn: string });
       }

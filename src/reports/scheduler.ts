@@ -4,6 +4,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import type { Engine } from "../engine/engine.ts";
 import type { MetaStore } from "../store/meta.ts";
 import type { DatasetRegistry } from "../agent/registry.ts";
+import type { SkillStore } from "../agent/skills.ts";
 import { createAnalysisSession } from "../agent/agent.ts";
 import { runTurn } from "../agent/runner.ts";
 
@@ -11,6 +12,7 @@ export interface SchedulerDeps {
   meta: MetaStore;
   engine: Engine;
   registry: DatasetRegistry;
+  skills?: SkillStore;
   reportsDir: string;
   modelSpec?: string;
 }
@@ -74,6 +76,7 @@ export class ReportScheduler {
         scope,
         engine: this.deps.engine,
         registry: this.deps.registry,
+        skills: this.deps.skills,
         modelSpec: this.deps.modelSpec,
       });
       const prompt =

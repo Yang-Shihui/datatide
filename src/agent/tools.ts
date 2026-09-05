@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { GuardError, type Engine, type QueryResult } from "../engine/engine.ts";
 import type { DatasetRegistry } from "./registry.ts";
+import type { SkillStore } from "./skills.ts";
 import { formatTable } from "../format.ts";
 
 export interface UserScope {
@@ -15,6 +16,8 @@ export interface ToolContext {
   scope: UserScope;
   /** charts generated this turn; the SSE server drains it after each run */
   charts: { id: string; title: string; spec: unknown }[];
+  /** 可选：内置/挂载的分析方法论技能 */
+  skills?: SkillStore;
 }
 
 const CHART_TYPES = ["bar", "line", "pie", "scatter"] as const;
@@ -141,5 +144,24 @@ export function createTools(ctx: ToolContext) {
     },
   });
 
-  return [datasetInfoTool, querySqlTool, makeChartTool];
+  const useSkillTool = defineTool({
+    name: "use_skill",
+    label: "加载分析技能",
+    description:
+      "加载一个分析技能的完整方法论（归因拆解、口径核对、图表选型等）。" +
+      "遇到技能清单里描述匹配当前问题的技能时，先加载它再按方法论执行；一次只加载一个。",
+    parameters: Type.Object({
+      name: Type.String({ description: "技能名，来自系统提示中的可用分析技能清单" }),
+    }),
+    async execute(_id, params) {
+      const body = ctx.skills?.loadBody(params.name);
+      if (!body) {
+        const names = ctx.skills?.list().map((s) => s.name).join(", ") || "（无）";
+        throw new Error(`技能 ${params.name} 不存在。可用技能：${names}`);
+      }
+      return { content: [{ type: "text" as const, text: body }], details: { skill: params.name } };
+    },
+  });
+
+  return [datasetInfoTool, querySqlTool, makeChartTool, useSkillTool];
 }

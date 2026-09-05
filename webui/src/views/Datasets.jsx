@@ -84,12 +84,12 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                     />
                   </div>
                   <div>
-                    <label>文件（≤64MB）</label>
+                    <label>文件（≤64MB，Excel 取第一个 sheet）</label>
                     <label className={`file-button${form.file ? " has-file" : ""}`}>
-                      {form.file ? form.file.name : "选择 CSV / Parquet 文件"}
+                      {form.file ? form.file.name : "选择 CSV / Parquet / Excel 文件"}
                       <input
                         type="file"
-                        accept=".csv,.parquet"
+                        accept=".csv,.parquet,.xlsx"
                         onChange={(e) => setForm({ ...form, file: e.target.files[0] })}
                       />
                     </label>

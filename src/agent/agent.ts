@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { Engine } from "../engine/engine.ts";
 import type { DatasetRegistry } from "./registry.ts";
+import type { SkillStore } from "./skills.ts";
 import { buildSystemPrompt } from "./prompt.ts";
 import { createTools, type ToolContext, type UserScope } from "./tools.ts";
 
@@ -22,6 +23,8 @@ export interface AnalysisSessionOptions {
   scope: UserScope;
   engine: Engine;
   registry: DatasetRegistry;
+  /** 可选：分析技能（清单进 system prompt，use_skill 工具加载正文） */
+  skills?: SkillStore;
   /** "provider/model-id"; defaults to DATATIDE_MODEL env or the configured default model */
   modelSpec?: string;
 }
@@ -42,10 +45,10 @@ export async function createAnalysisSession(options: AnalysisSessionOptions): Pr
   const { scope, engine, registry } = options;
 
   const charts: ToolContext["charts"] = [];
-  const toolContext: ToolContext = { engine, registry, scope, charts };
+  const toolContext: ToolContext = { engine, registry, scope, charts, skills: options.skills };
   const tools = createTools(toolContext);
 
-  const systemPrompt = await buildSystemPrompt(scope, registry);
+  const systemPrompt = await buildSystemPrompt(scope, registry, {}, options.skills);
 
   const loader = new DefaultResourceLoader({
     cwd: process.cwd(),

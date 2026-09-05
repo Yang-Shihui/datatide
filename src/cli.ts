@@ -1,7 +1,9 @@
 import * as readline from "node:readline";
+import { resolve } from "node:path";
 import { Engine } from "./engine/engine.ts";
 import { MetaStore } from "./store/meta.ts";
 import { DatasetRegistry } from "./agent/registry.ts";
+import { SkillStore } from "./agent/skills.ts";
 import { createAnalysisSession, type AnalysisSession } from "./agent/agent.ts";
 import type { UserScope } from "./agent/tools.ts";
 
@@ -14,6 +16,7 @@ async function main() {
   const engine = await Engine.create(":memory:");
   const registry = new DatasetRegistry(engine, meta);
   await registry.ensureRegistered();
+  const skills = SkillStore.create(resolve("skills"), process.env.DATATIDE_SKILLS_DIR);
 
   const datasets = meta.listDatasets().map((d) => d.name);
   const scope: UserScope = { username: process.env.DATATIDE_USER ?? "cli", datasets };
@@ -21,6 +24,7 @@ async function main() {
     scope,
     engine,
     registry,
+    skills,
     modelSpec: process.env.DATATIDE_MODEL,
   });
 

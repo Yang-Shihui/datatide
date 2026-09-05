@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DatasetRegistry } from "./registry.ts";
+import type { SkillStore } from "./skills.ts";
 import type { UserScope } from "./tools.ts";
 
 const PROMPT_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../prompts/analyst");
@@ -18,6 +19,7 @@ export async function buildSystemPrompt(
   scope: UserScope,
   registry: DatasetRegistry,
   opts: { includeSnapshot?: boolean } = {},
+  skills?: SkillStore,
 ): Promise<string> {
   const parts: string[] = [PERSONA];
 
@@ -34,6 +36,9 @@ export async function buildSystemPrompt(
   if (opts.includeSnapshot !== false && scope.datasets.length > 0) {
     parts.push("## 数据集快照\n\n" + (await registry.snapshotText(scope.datasets)));
   }
+
+  const skillSection = skills?.promptSection();
+  if (skillSection) parts.push(skillSection);
 
   return parts.join("\n\n");
 }

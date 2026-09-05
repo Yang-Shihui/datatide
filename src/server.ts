@@ -5,6 +5,7 @@ import type { Request, Response } from "express";
 import { Engine } from "./engine/engine.ts";
 import { MetaStore } from "./store/meta.ts";
 import { DatasetRegistry } from "./agent/registry.ts";
+import { SkillStore } from "./agent/skills.ts";
 import { createAnalysisSession, type AnalysisSession } from "./agent/agent.ts";
 import { runTurn, type TurnEvent } from "./agent/runner.ts";
 import { AuthService } from "./auth.ts";
@@ -18,6 +19,7 @@ interface Ctx {
   meta: MetaStore;
   engine: Engine;
   registry: DatasetRegistry;
+  skills: SkillStore;
   auth: AuthService;
   scheduler: ReportScheduler;
   /** one agent per chat session; created lazily, disposed on eviction */
@@ -43,11 +45,13 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
   const engine = await Engine.create(":memory:");
   const registry = new DatasetRegistry(engine, meta);
   await registry.ensureRegistered();
+  const skills = SkillStore.create(resolve("skills"), process.env.DATATIDE_SKILLS_DIR);
   const auth = new AuthService(meta);
   const scheduler = new ReportScheduler({
     meta,
     engine,
     registry,
+    skills,
     reportsDir,
     modelSpec: process.env.DATATIDE_MODEL,
   });
@@ -59,7 +63,7 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     console.log("[init] 已创建管理员 admin（密码来自 DATATIDE_ADMIN_PASSWORD）");
   }
 
-  const ctx: Ctx = { meta, engine, registry, auth, scheduler, agents: new Map(), busy: new Set() };
+  const ctx: Ctx = { meta, engine, registry, skills, auth, scheduler, agents: new Map(), busy: new Set() };
 
   const app = express();
   app.disable("x-powered-by");
@@ -109,12 +113,12 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
   app.post("/api/datasets", (req, res) => adminOnly(req, res, () => guard(res, async () => {
     const { name, kind, description, format, content_base64, dsn } = req.body as {
       name: string; kind: "file" | "postgres"; description?: string;
-      format?: "csv" | "parquet"; content_base64?: string; dsn?: string;
+      format?: "csv" | "parquet" | "xlsx"; content_base64?: string; dsn?: string;
     };
     if (!/^[a-z_][a-z0-9_]*$/.test(name ?? "")) throw new Error("数据集名需为小写字母/数字/下划线");
     if (meta.getDataset(name)) throw new Error("数据集已存在");
     if (kind === "file") {
-      if (format !== "csv" && format !== "parquet") throw new Error("文件数据集需指定 format: csv|parquet");
+      if (format !== "csv" && format !== "parquet" && format !== "xlsx") throw new Error("文件数据集需指定 format: csv|parquet|xlsx");
       if (!content_base64) throw new Error("缺少 content_base64（文件内容）");
       const buf = Buffer.from(content_base64, "base64");
       if (buf.length === 0 || buf.length > MAX_UPLOAD_BYTES) throw new Error("文件为空或超过 64MB 上限");
@@ -238,6 +242,7 @@ async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): 
     scope: { username, datasets },
     engine: ctx.engine,
     registry: ctx.registry,
+    skills: ctx.skills,
     modelSpec: process.env.DATATIDE_MODEL,
   });
   ctx.agents.set(sessionId, agent);

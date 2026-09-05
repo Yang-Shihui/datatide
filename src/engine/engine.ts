@@ -4,8 +4,8 @@ import { guardSql } from "./guard.ts";
 export type DatasetKind = "file" | "postgres";
 
 export interface FileDatasetConfig {
-  path: string; // absolute path to csv/parquet file
-  format: "csv" | "parquet";
+  path: string; // absolute path to csv/parquet/xlsx file
+  format: "csv" | "parquet" | "xlsx";
 }
 
 export interface PostgresDatasetConfig {
@@ -57,10 +57,17 @@ export class Engine {
     const conn = await this.connect();
     try {
       const lit = config.path.replace(/'/g, "''");
+      if (config.format === "xlsx") {
+        // excel 扩展提供 read_xlsx；首次使用会联网 INSTALL（compose 镜像可预装）
+        await conn.run("INSTALL excel");
+        await conn.run("LOAD excel");
+      }
       const src =
         config.format === "csv"
           ? `read_csv_auto('${lit}', header=true)`
-          : `read_parquet('${lit}')`;
+          : config.format === "parquet"
+            ? `read_parquet('${lit}')`
+            : `read_xlsx('${lit}')`;
       await conn.run(`CREATE OR REPLACE VIEW ${name} AS SELECT * FROM ${src}`);
     } finally {
       await conn.closeSync();
