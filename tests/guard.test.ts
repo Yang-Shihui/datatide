@@ -52,6 +52,27 @@ describe("guardSql — 允许的查询", () => {
     const r = guardSql("SELECT * FROM sales WHERE note = 'a;b'", opts());
     expect(r.ok).toBe(true);
   });
+
+  it("函数参数里的 FROM 不算表引用（EXTRACT/SUBSTRING/TRIM）", () => {
+    expect(guardSql("SELECT EXTRACT(QUARTER FROM order_date) AS q FROM sales", opts()).ok).toBe(true);
+    expect(guardSql("SELECT SUBSTRING(region FROM 1 FOR 2) FROM sales", opts()).ok).toBe(true);
+    expect(guardSql("SELECT TRIM(LEADING 'x' FROM region) FROM sales", opts()).ok).toBe(true);
+  });
+});
+
+describe("guardSql — 函数参数与子查询中的表引用", () => {
+  const expectReject = (sql: string) => {
+    const r = guardSql(sql, opts());
+    expect(r.ok, `${sql} 应被拒绝`).toBe(false);
+  };
+
+  it("函数参数里藏子查询时，内部的表引用仍受白名单约束", () => {
+    expectReject("SELECT COALESCE((SELECT max(amount) FROM secret_table), 0) FROM sales");
+  });
+
+  it("IN (子查询) 内的表引用受白名单约束", () => {
+    expectReject("SELECT * FROM sales WHERE region IN (SELECT name FROM secret_table)");
+  });
 });
 
 describe("guardSql — 拒绝的查询", () => {

@@ -228,6 +228,17 @@ export function extractTableRefs(sql: string): { refs: string[]; cteNames: Set<s
 
   const tokens = lex(sql);
   const isIdent = (t: Token) => t.kind === "quoted" || (t.kind === "word" && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t.text));
+  const findMatchingParen = (openIdx: number): number => {
+    let depth = 0;
+    for (let j = openIdx; j < tokens.length; j++) {
+      if (tokens[j]!.text === "(") depth++;
+      if (tokens[j]!.text === ")") {
+        depth--;
+        if (depth === 0) return j;
+      }
+    }
+    return -1;
+  };
   const skipParens = (i: number): number => {
     // tokens[i] is "(", return the index after the matching ")"
     let depth = 0;
@@ -268,6 +279,21 @@ export function extractTableRefs(sql: string): { refs: string[]; cteNames: Set<s
   while (i < tokens.length) {
     const t = tokens[i]!;
     const w = t.kind === "word" ? t.text.toLowerCase() : "";
+    if (isIdent(t) && tokens[i + 1]?.text === "(") {
+      // function call (EXTRACT(x FROM y), SUBSTRING(s FROM 1), …): skip the
+      // argument parens wholesale, unless a subquery hides inside — then the
+      // inner FROM clauses still need the allowlist check
+      const close = findMatchingParen(i + 1);
+      if (close !== -1) {
+        const hasSubquery = tokens
+          .slice(i + 2, close)
+          .some((it) => it.kind === "word" && /^(select|with)$/i.test(it.text));
+        if (!hasSubquery) {
+          i = close + 1;
+          continue;
+        }
+      }
+    }
     if (w === "from" || w === "join") {
       i++;
       let expectRef = w === "from" || w === "join";
