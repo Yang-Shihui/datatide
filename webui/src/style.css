@@ -389,17 +389,23 @@ label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 5px
 .skill-option .skill-desc { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.stop { color: var(--err); border-color: var(--err); }
 button.stop:hover { background: var(--err-soft); border-color: var(--err); color: var(--err); }
-.msg-actions { display: flex; gap: 4px; justify-content: flex-end; margin-top: 4px; opacity: 0; transition: opacity 120ms ease; }
-.msg:hover .msg-actions, .msg.user:hover .msg-actions { opacity: 1; }
+.msg { position: relative; }
+/* 操作按钮：仅 hover 时浮现在消息右下方，不占布局空间 */
+.msg-actions {
+  position: absolute; right: 2px; top: calc(100% - 8px); z-index: 5;
+  display: none; gap: 2px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 7px;
+  padding: 2px; box-shadow: var(--shadow);
+}
+.msg:hover .msg-actions { display: flex; }
 .msg-actions button {
   display: inline-flex; align-items: center; gap: 4px;
   background: none; border: none; cursor: pointer;
-  color: var(--faint); font-size: 12px; font-family: inherit;
-  padding: 2px 7px; border-radius: 5px;
+  color: var(--muted); font-size: 12px; font-family: inherit;
+  padding: 3px 8px; border-radius: 5px;
   transition: color 120ms ease, background 120ms ease;
 }
 .msg-actions button:hover { color: var(--primary); background: var(--primary-soft); }
-.msg.user .msg-actions button:hover { color: var(--primary); background: rgba(255, 255, 255, 0.7); }
 .thinking-block { margin-bottom: 8px; }
 .thinking-toggle {
   display: inline-flex; align-items: center; gap: 5px;
