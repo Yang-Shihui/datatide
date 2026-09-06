@@ -135,7 +135,7 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                   <input className="mono" value={form.dsn} onChange={(e) => setForm({ ...form, dsn: e.target.value })} />
                 </div>
               )}
-              <button className="primary" onClick={upload}>
+              <button className="primary" style={{ height: 40, padding: "0 20px" }} onClick={upload}>
                 注册数据集
               </button>
             </div>
