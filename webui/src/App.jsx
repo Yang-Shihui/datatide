@@ -7,6 +7,8 @@ import { Chat } from "./views/Chat.jsx";
 import { Datasets } from "./views/Datasets.jsx";
 import { Reports } from "./views/Reports.jsx";
 
+const ROLE_LABELS = { admin: "管理员", analyst: "分析员", viewer: "查看者" };
+
 const BASE_TABS = [
   ["chat", "对话分析", IconChat],
   ["datasets", "数据集", IconDatabase],
@@ -67,7 +69,7 @@ export default function App() {
         </nav>
         <div className="who">
           <span>
-            <b>{user.username}</b> · {user.role}
+            <b>{user.username}</b> · {ROLE_LABELS[user.role] || user.role}
           </span>
           <button className="ghost" onClick={() => { clearToken(); setUser(null); }}>
             退出
@@ -114,7 +116,7 @@ function Login({ onLogin, notify }) {
           <LogoMark size={34} />
           <h1>datatide</h1>
         </div>
-        <div className="sub">自托管对话式 BI · 数据不出内网</div>
+        <div className="sub">自托管对话式 BI · 数据访问受授权控制</div>
         <label>用户名</label>
         <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
         <label>密码</label>
@@ -125,7 +127,7 @@ function Login({ onLogin, notify }) {
         <div className="hint">
           {mode === "login" ? "还没有账号？" : "已有账号？"}
           <a href="#" onClick={(e) => { e.preventDefault(); setMode(mode === "login" ? "register" : "login"); }}>
-            {mode === "login" ? "注册（首个用户成为管理员）" : "去登录"}
+            {mode === "login" ? "注册（无预置管理员时，首个用户成为管理员）" : "去登录"}
           </a>
         </div>
       </form>
@@ -176,7 +178,7 @@ function Settings({ user, wrap }) {
         <UsagePanel />
         <AuditPanel />
         <div className="panel ds-form">
-          <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>MCP 外部工具（{data.mcp.servers.length} 个 server）</h3>
+          <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>MCP 外部工具（{data.mcp.servers.length} 个服务器）</h3>
           <div className="muted" style={{ fontSize: 13 }}>
             配置文件：{data.mcp.configPath} · 标准 mcpServers JSON 格式，修改后重启生效。
             {" "}agent 通过 mcp 网关工具（list / call）使用这些服务器提供的工具。
@@ -184,7 +186,7 @@ function Settings({ user, wrap }) {
           {data.mcp.servers.length > 0 && (
             <table className="schema-table" style={{ marginTop: 10 }}>
               <thead>
-                <tr><th>Server</th><th>说明</th><th>已索引工具数</th></tr>
+                <tr><th>服务器</th><th>说明</th><th>启动时已索引工具数</th></tr>
               </thead>
               <tbody>
                 {data.mcp.servers.map((m) => (

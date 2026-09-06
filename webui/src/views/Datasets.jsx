@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
-import { getToken } from "../api.js";
 import { Select } from "../components/Select.jsx";
 
 export function Datasets({ user, notify, wrap, refreshMe }) {
@@ -21,7 +20,7 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
     if (!form.name.trim()) throw new Error("请填写数据集名");
     const body = { name: form.name.trim(), kind: form.kind, description: form.description };
     if (form.kind === "file") {
-      if (!form.file) throw new Error("请选择 CSV/Parquet 文件");
+      if (!form.file) throw new Error("请选择 CSV/Parquet/Excel 文件");
       const buf = await form.file.arrayBuffer();
       body.format = form.format;
       body.content_base64 = arrayBufferToBase64(buf);
@@ -95,7 +94,7 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                   value={form.kind}
                   onChange={(kind) => setForm({ ...form, kind })}
                   options={[
-                    { value: "file", label: "CSV / Parquet 文件" },
+                    { value: "file", label: "CSV / Parquet / Excel 文件" },
                     { value: "postgres", label: "Postgres 连接" },
                   ]}
                   ariaLabel="数据集类型"
@@ -149,14 +148,14 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
             <div key={d.name} className="panel ds-card">
               <h3>
                 {d.name}
-                <span className="kind">{d.kind}</span>
+                <span className="kind">{d.kind === "file" ? "文件" : "PostgreSQL 数据库"}</span>
               </h3>
               <div className="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>
-                {d.description || "（无描述）"} · {d.authorized ? "已授权" : "未授权"}
+                {d.description || "（无描述）"} · {d.authorized ? "可访问" : "无访问权限"}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="ghost" disabled={!d.authorized} onClick={() => showSchema(d.name)}>
-                  schema / 预览
+                  查看结构与预览
                 </button>
                 {isAdmin && (
                   <button className="ghost" onClick={() => openAccess(d.name)}>
@@ -191,7 +190,7 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                     字段
                   </button>
                   <button className={`ghost${schemaTab === "preview" ? " active-tab" : ""}`} onClick={() => showPreview(schema.name)}>
-                    数据预览（前 50 行）
+                    数据预览（首张表前 50 行）
                   </button>
                 </div>
                 {schemaTab === "fields" && (

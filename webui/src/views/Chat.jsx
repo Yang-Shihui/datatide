@@ -600,7 +600,7 @@ function MessageBlock({ block, onCopy, onEdit, editing, onSubmitEdit, onCancelEd
               复制
             </button>
             {block.role === "user" && !block.live && block.id != null && onEdit && editing?.id !== block.id && (
-              <button type="button" title="编辑并重新生成回答（之前的消息不受影响）" onClick={() => onEdit(block)}>
+              <button type="button" title="编辑并重新生成（此消息及之后内容将被替换）" onClick={() => onEdit(block)}>
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                 </svg>

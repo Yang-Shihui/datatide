@@ -16,14 +16,15 @@ export function Reports({ user, notify, wrap }) {
 
   const create = wrap(async () => {
     await api.post("/api/reports", form);
-    notify("报告已创建并加入调度");
+    notify("报告配置已创建；cron 合法时加入调度");
     setForm({ ...form, title: "", prompt: "" });
     reload();
   });
 
   const runNow = wrap(async (id) => {
     notify("报告生成中…");
-    await api.post(`/api/reports/${id}/run`, {});
+    const result = await api.post(`/api/reports/${id}/run`, {});
+    if (result.error) throw new Error(result.error);
     notify("报告已生成");
     showRuns(id);
     reload();
@@ -79,7 +80,7 @@ export function Reports({ user, notify, wrap }) {
               <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="每周销售异动归因" />
             </div>
             <div className="field">
-              <label>cron 表达式</label>
+              <label>cron 表达式（时区默认 Asia/Shanghai）</label>
               <input className="mono" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} style={{ width: 130 }} />
             </div>
             <button className="primary" onClick={create} disabled={!form.dataset || !form.title || !form.prompt}>
@@ -114,7 +115,9 @@ export function Reports({ user, notify, wrap }) {
             {runs.list.length === 0 && <div className="muted">暂无运行记录。</div>}
             {runs.list.map((run) => (
               <div key={run.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                <span className={`badge ${run.status === "success" ? "ok" : run.status === "error" ? "err" : "run"}`}>{run.status}</span>
+                <span className={`badge ${run.status === "success" ? "ok" : run.status === "error" ? "err" : "run"}`}>
+  {run.status === "success" ? "成功" : run.status === "error" ? "失败" : "运行中"}
+</span>
                 <span className="mono muted" style={{ fontSize: 13 }}>
                   {run.started_at}
                 </span>

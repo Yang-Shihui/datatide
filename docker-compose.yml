@@ -10,7 +10,7 @@ services:
       - bi-data:/app/data
       - ./reports:/app/reports
       # 模型配置（Pi SDK 读取 ~/.pi/agent/models.json），按需挂载：
-      # - ${HOME}/.pi/agent:/home/node/.pi/agent:ro
+      # - ${HOME}/.pi/agent:/root/.pi/agent:ro
     restart: unless-stopped
 
 volumes:
