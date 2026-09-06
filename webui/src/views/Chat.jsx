@@ -635,6 +635,7 @@ function InlineEdit({ initial, onCancel, onSubmit }) {
       <textarea
         ref={ref}
         value={text}
+        style={{ resize: "none" }}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
