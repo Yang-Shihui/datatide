@@ -300,18 +300,20 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
       // 否则（服务重启/经历过其他编辑/条目已被 compaction）内存树与 DB 无法对应，
       // 直接重建会话——宁可丢上下文也不能把废弃分支的内容混进模型上下文
       const onCurrentBranch = entry ? isOnCurrentBranch(sm, entry) : false;
+      // DB 截断在任何路径下都必须执行（否则编辑退化成追加，越积越多）；
+      // 无法精确回退时重建会话——丢上下文是可接受的降级，数据错位不可接受
+      meta.truncateMessagesFrom(id, editMessageId);
       if (entry && onCurrentBranch) {
         if (entry.parentId) sm.branch(entry.parentId);
         else sm.resetLeaf();
-      } else {
-        agent.dispose();
-        ctx.agents.delete(id);
-        const rebuilt = await getOrCreateAgent(ctx, user.username, id);
-        if (!rebuilt) return res.status(400).json({ error: "会话重建失败" });
-        return startChat(ctx, req, res, id, rebuilt, message, skill ? { name: skill.name, body: skill.body } : undefined, true);
+        await startChat(ctx, req, res, id, agent, message, skill ? { name: skill.name, body: skill.body } : undefined, true);
+        return;
       }
-      await startChat(ctx, req, res, id, agent, message, skill ? { name: skill.name, body: skill.body } : undefined, true);
-      return;
+      agent.dispose();
+      ctx.agents.delete(id);
+      const rebuilt = await getOrCreateAgent(ctx, user.username, id);
+      if (!rebuilt) return res.status(400).json({ error: "会话重建失败" });
+      await startChat(ctx, req, res, id, rebuilt, message, skill ? { name: skill.name, body: skill.body } : undefined, true);
     }
 
     await startChat(ctx, req, res, id, agent, message);

@@ -546,7 +546,7 @@ button.stop:hover { background: var(--err-soft); border-color: var(--err); color
 
 /* ---- 行内编辑 ---- */
 .inline-edit textarea {
-  width: 100%; min-height: 72px; resize: vertical;
-  font-size: 14.5px;
+  width: 100%; min-height: 72px; resize: none;
+  font-size: 14.5px; line-height: 1.55;
 }
 .inline-edit-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
