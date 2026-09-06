@@ -23,6 +23,12 @@ export const api = {
       headers: { "Content-Type": "application/json", ...authHeader() },
       body: JSON.stringify(body),
     }).then(handle),
+  patch: (path, body) =>
+    fetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify(body),
+    }).then(handle),
   delete: (path) => fetch(path, { method: "DELETE", headers: authHeader() }).then(handle),
 };
 

@@ -15,5 +15,14 @@ if (!meta.getDataset("sales_demo")) {
 } else {
   console.log("dataset sales_demo already registered");
 }
+if (!meta.getDataset("region_targets")) {
+  meta.createDataset(
+    "region_targets",
+    "file",
+    { path: resolve("data/datasets/region_targets.csv"), format: "csv" },
+    "各区域逐月销售目标（元）。与 sales_demo 按 region+月份 关联可算达成率。",
+  );
+  console.log("registered dataset: region_targets");
+}
 meta.close();
 void Engine;

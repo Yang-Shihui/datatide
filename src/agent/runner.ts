@@ -9,9 +9,16 @@ export type TurnEvent =
   | { type: "done"; text: string }
   | { type: "error"; message: string };
 
+export interface TurnUsage {
+  input: number;
+  output: number;
+  total: number;
+}
+
 export interface TurnOutcome {
   text: string;
   thinking: string;
+  usage: TurnUsage | null;
   charts: { id: string; title: string; spec: unknown }[];
 }
 
@@ -27,6 +34,7 @@ export async function runTurn(
 ): Promise<TurnOutcome> {
   let text = "";
   let thinking = "";
+  let outcomeUsage: TurnUsage | null = null;
   let chartsEmitted = 0;
   agent.charts.length = 0; // charts are per-turn state
 
@@ -64,10 +72,17 @@ export async function runTurn(
         if (event.willRetry) break;
         {
           const last = event.messages.at(-1) as
-            | { role?: string; stopReason?: string; errorMessage?: string }
+            | { role?: string; stopReason?: string; errorMessage?: string; usage?: { input?: number; output?: number; totalTokens?: number } }
             | undefined;
           if (last?.role === "assistant" && last.stopReason === "error") {
             onEvent({ type: "error", message: last.errorMessage ?? "模型返回错误" });
+          }
+          if (last?.role === "assistant" && last.usage && !outcomeUsage) {
+            outcomeUsage = {
+              input: Number(last.usage.input ?? 0),
+              output: Number(last.usage.output ?? 0),
+              total: Number(last.usage.totalTokens ?? 0),
+            };
           }
         }
         break;
@@ -86,5 +101,5 @@ export async function runTurn(
     onEvent({ type: "chart", chart });
   }
   onEvent({ type: "done", text });
-  return { text, thinking, charts: [...agent.charts] };
+  return { text, thinking, usage: outcomeUsage, charts: [...agent.charts] };
 }

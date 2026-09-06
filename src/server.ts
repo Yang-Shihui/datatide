@@ -143,11 +143,13 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
       writeFileSync(path, buf);
       meta.createDataset(name, "file", { path, format }, description ?? "");
       await engine.registerFile(name, { path, format });
+      meta.audit(currentUser(req)!.username, "dataset_register", { dataset: name, kind: "file" });
     } else if (kind === "postgres") {
       if (!dsn) throw new Error("postgres 数据集需要 dsn");
       meta.createDataset(name, "postgres", { dsn }, description ?? "");
       try {
         await engine.registerPostgres(name, { dsn });
+        meta.audit(currentUser(req)!.username, "dataset_register", { dataset: name, kind: "postgres" });
       } catch (err) {
         meta.deleteDataset(name);
         throw err;
@@ -163,6 +165,7 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     if (!meta.getDataset(name)) return res.status(404).json({ error: "数据集不存在" });
     meta.deleteDataset(name);
     await engine.dropDataset(name);
+    meta.audit(currentUser(req)!.username, "dataset_delete", { dataset: name });
     res.json({ ok: true });
   })));
 
@@ -172,6 +175,57 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
       return res.status(403).json({ error: "无权访问该数据集" });
     }
     res.json(await registry.describe(req.params.name));
+  }));
+
+  app.get("/api/datasets/:name/preview", (req, res) => guard(res, async () => {
+    const user = currentUser(req)!;
+    const name = req.params.name;
+    if (!meta.datasetsForUser(user).includes(name)) return res.status(403).json({ error: "无权访问该数据集" });
+    const ds = meta.getDataset(name);
+    if (!ds) return res.status(404).json({ error: "数据集不存在" });
+    const rows = Math.min(Number(req.query.rows ?? 50) || 50, 200);
+    const tables = await engine.listTables(name, ds.kind);
+    if (tables.length === 0) return res.status(400).json({ error: "数据集为空" });
+    // 文件数据集预览注册视图本身；postgres 数据集预览第一张表
+    const result = await engine.query(`SELECT * FROM ${tables[0]}`, { allowedViews: tables, rowCap: rows });
+    res.json({ table: tables[0], rowCount: (await registry.describe(name)).schema.rowCount, rows: result.rows, truncated: result.truncated });
+  }));
+
+  app.get("/api/datasets/:name/access", (req, res) => adminOnly(req, res, () => {
+    const name = req.params.name;
+    if (!meta.getDataset(name)) {
+      res.status(404).json({ error: "数据集不存在" });
+      return;
+    }
+    const granted = new Set(
+      meta
+        .listUsers()
+        .filter((u) => meta.datasetsForUser(u).includes(name))
+        .map((u) => u.username),
+    );
+    res.json({
+      users: meta.listUsers().map((u) => ({ username: u.username, role: u.role, granted: granted.has(u.username) || u.role === "admin" })),
+    });
+  }));
+
+  app.put("/api/datasets/:name/access", (req, res) => adminOnly(req, res, () => guard(res, () => {
+    const name = req.params.name;
+    const { username, grant } = req.body as { username: string; grant: boolean };
+    const target = meta.getUser(username);
+    if (!target) throw new Error("用户不存在");
+    if (target.role === "admin") throw new Error("admin 天然可见全部数据集，无需授权");
+    if (grant) {
+      meta.grantDataset(username, name);
+      meta.audit(currentUser(req)!.username, "access_grant", { dataset: name, user: username });
+    } else {
+      meta.revokeDataset(username, name);
+      meta.audit(currentUser(req)!.username, "access_revoke", { dataset: name, user: username });
+    }
+    res.json({ ok: true });
+  })));
+
+  app.get("/api/users", (req, res) => adminOnly(req, res, () => {
+    res.json(meta.listUsers().map((u) => ({ username: u.username, role: u.role })));
   }));
 
   // ---- chat ----
@@ -245,9 +299,9 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
         ctx.agents.delete(id);
         const rebuilt = await getOrCreateAgent(ctx, user.username, id);
         if (!rebuilt) return res.status(400).json({ error: "会话重建失败" });
-        return startChat(ctx, req, res, id, rebuilt, message, skill ? { name: skill.name, body: skill.body } : undefined);
+        return startChat(ctx, req, res, id, rebuilt, message, skill ? { name: skill.name, body: skill.body } : undefined, true);
       }
-      await startChat(ctx, req, res, id, agent, message, skill ? { name: skill.name, body: skill.body } : undefined);
+      await startChat(ctx, req, res, id, agent, message, skill ? { name: skill.name, body: skill.body } : undefined, true);
       return;
     }
 
@@ -264,6 +318,30 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     const id = Number(req.params.id);
     if (meta.chatSessionOwner(id) !== user.id) return res.status(403).json({ error: "会话不存在" });
     res.json(meta.listMessages(id));
+  }));
+
+  app.patch("/api/sessions/:id", (req, res) => guard(res, () => {
+    const user = currentUser(req)!;
+    const id = Number(req.params.id);
+    if (meta.chatSessionOwner(id) !== user.id) return res.status(403).json({ error: "会话不存在" });
+    const { title } = req.body as { title?: string };
+    if (!title?.trim()) return res.status(400).json({ error: "title 不能为空" });
+    meta.renameChatSession(id, title.trim().slice(0, 60));
+    res.json({ ok: true });
+  }));
+
+  app.delete("/api/sessions/:id", (req, res) => guard(res, () => {
+    const user = currentUser(req)!;
+    const id = Number(req.params.id);
+    if (meta.chatSessionOwner(id) !== user.id) return res.status(403).json({ error: "会话不存在" });
+    if (ctx.busy.has(id)) return res.status(409).json({ error: "会话正在处理中，无法删除" });
+    meta.deleteChatSession(id);
+    const agent = ctx.agents.get(id);
+    if (agent) {
+      agent.dispose();
+      ctx.agents.delete(id);
+    }
+    res.json({ ok: true });
   }));
 
   app.post("/api/sessions/:id/truncate", (req, res) => guard(res, () => {
@@ -342,6 +420,15 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     res.type("text/markdown; charset=utf-8").send(readReport(String(run.output_path), reportsDir));
   }));
 
+  // ---- 用量与审计（admin） ----
+  app.get("/api/usage", (req, res) => adminOnly(req, res, () => {
+    res.json(meta.usageStats());
+  }));
+
+  app.get("/api/audit", (req, res) => adminOnly(req, res, () => {
+    res.json(meta.listAudit(Number(req.query.limit ?? 200) || 200));
+  }));
+
   // ---- static console (served before auth so the browser can load the shell) ----
   serveStatic(app, staticDir, reportsDir);
 
@@ -366,6 +453,11 @@ function isOnCurrentBranch(sm: AnalysisSession["session"]["sessionManager"], ent
     cur = cur.parentId ? byId.get(cur.parentId) : undefined;
   }
   return false;
+}
+
+function turnUsername(ctx: Ctx, sessionId: number): string {
+  const uid = ctx.meta.chatSessionOwner(sessionId);
+  return uid != null ? (ctx.meta.getUserById(uid)?.username ?? "unknown") : "unknown";
 }
 
 async function getOrCreateAgent(ctx: Ctx, username: string, sessionId: number): Promise<AnalysisSession | undefined> {
@@ -402,11 +494,18 @@ async function startChat(
   agent: AnalysisSession,
   message: string,
   skill?: { name: string; body: string },
+  isEdit = false,
 ) {
   ctx.busy.add(sessionId);
   // 存库的是带技能标记的原文（回放时能看出技能来源），实际发给模型的 prompt 注入技能正文
   const storedMessage = skill ? `/skill:${skill.name} ${message}`.trim() : message;
   const userMessageId = ctx.meta.addMessage(sessionId, "user", storedMessage);
+  ctx.meta.audit(turnUsername(ctx, sessionId), "chat_turn", {
+    session: sessionId,
+    question: message.slice(0, 200),
+    skill: skill?.name ?? null,
+    edit: isEdit,
+  });
   if (skill) {
     message = `用户通过技能面板选择了技能「${skill.name}」，以下是该技能的方法论，请严格按其框架执行：\n\n<skill>\n${skill.body}\n</skill>\n\n用户问题：${message}`;
   }
@@ -464,7 +563,21 @@ async function startChat(
     if (newEntry) {
       ctx.meta.setMessageExtras(userMessageId, JSON.stringify({ piEntry: newEntry.id }));
     }
-    ctx.meta.addMessage(sessionId, "assistant", outcome.text, JSON.stringify({ charts: outcome.charts, thinking: outcome.thinking }));
+    ctx.meta.addMessage(
+      sessionId,
+      "assistant",
+      outcome.text,
+      JSON.stringify({ charts: outcome.charts, thinking: outcome.thinking, usage: outcome.usage }),
+    );
+    if (outcome.usage) {
+      ctx.meta.recordUsage(
+        turnUsername(ctx, sessionId),
+        sessionId,
+        outcome.usage.input,
+        outcome.usage.output,
+        outcome.usage.total,
+      );
+    }
     ctx.meta.touchChatSession(sessionId);
     send("done", { text: outcome.text });
   } catch (err) {

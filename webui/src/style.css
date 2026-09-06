@@ -259,6 +259,18 @@ label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 5px
 }
 .session-item:hover { background: var(--bg); color: var(--text); }
 .session-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 500; }
+.session-actions { display: none; position: absolute; right: 10px; top: 8px; gap: 2px; }
+.session-item { position: relative; padding-right: 56px; }
+.session-item:hover .session-actions { display: inline-flex; }
+.session-actions button {
+  background: none; border: none; cursor: pointer; color: var(--faint);
+  padding: 2px; border-radius: 4px; display: inline-flex;
+}
+.session-actions button:hover { color: var(--primary); background: var(--primary-soft); }
+.session-rename { display: flex; gap: 4px; margin-bottom: 8px; }
+.session-rename input { flex: 1; min-width: 0; padding: 5px 8px; font-size: 12.5px; }
+.session-rename button { padding: 5px 9px; font-size: 12px; }
+.ghost.active-tab { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 .chat-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .messages { flex: 1; overflow-y: auto; padding: 28px 32px; }
 .msg { max-width: 860px; margin: 0 auto 18px; }

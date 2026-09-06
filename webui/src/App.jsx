@@ -173,6 +173,8 @@ function Settings({ user, wrap }) {
             </tbody>
           </table>
         </div>
+        <UsagePanel />
+        <AuditPanel />
         <div className="panel ds-form">
           <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>MCP 外部工具（{data.mcp.servers.length} 个 server）</h3>
           <div className="muted" style={{ fontSize: 13 }}>
@@ -197,6 +199,87 @@ function Settings({ user, wrap }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function UsagePanel() {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get("/api/usage").then(setData).catch(() => setData({ totals: null }));
+  }, []);
+  return (
+    <div className="panel ds-form" style={{ marginBottom: 16 }}>
+      <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>Token 用量</h3>
+      {!data || !data.totals ? (
+        <div className="skeleton" style={{ height: 60 }} />
+      ) : (
+        <>
+          <div className="muted" style={{ fontSize: 13 }}>
+            累计 {data.totals.turns} 次分析 · 输入 {data.totals.input.toLocaleString()} / 输出 {data.totals.output.toLocaleString()} / 合计 {data.totals.total.toLocaleString()} tokens
+          </div>
+          {data.byUser.length > 0 && (
+            <table className="schema-table" style={{ marginTop: 10, fontFamily: "var(--sans)" }}>
+              <thead>
+                <tr><th>用户</th><th>分析次数</th><th>输入</th><th>输出</th><th>合计</th></tr>
+              </thead>
+              <tbody>
+                {data.byUser.map((u) => (
+                  <tr key={u.username}>
+                    <td>{u.username}</td>
+                    <td>{u.turns}</td>
+                    <td>{u.input.toLocaleString()}</td>
+                    <td>{u.output.toLocaleString()}</td>
+                    <td>{u.total.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const AUDIT_LABELS = {
+  chat_turn: "对话分析",
+  dataset_register: "注册数据集",
+  dataset_delete: "删除数据集",
+  access_grant: "授权",
+  access_revoke: "撤销授权",
+  report_run: "生成报告",
+  login: "登录",
+};
+
+function AuditPanel() {
+  const [list, setList] = useState(null);
+  useEffect(() => {
+    api.get("/api/audit?limit=100").then(setList).catch(() => setList([]));
+  }, []);
+  return (
+    <div className="panel ds-form" style={{ marginBottom: 16 }}>
+      <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>审计日志（最近 {list ? list.length : "…"} 条）</h3>
+      {list && list.length === 0 && <div className="muted">暂无记录。</div>}
+      {list && list.length > 0 && (
+        <table className="schema-table" style={{ fontFamily: "var(--sans)" }}>
+          <thead>
+            <tr><th style={{ width: 160 }}>时间</th><th style={{ width: 90 }}>用户</th><th style={{ width: 100 }}>动作</th><th>详情</th></tr>
+          </thead>
+          <tbody>
+            {list.map((a) => (
+              <tr key={a.id}>
+                <td className="mono">{a.ts.replace("T", " ").slice(0, 19)}</td>
+                <td>{a.username}</td>
+                <td>{AUDIT_LABELS[a.action] || a.action}</td>
+                <td className="muted" style={{ fontSize: 12.5, maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {a.detail === "{}" ? "—" : a.detail}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

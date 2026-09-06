@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { getToken } from "../api.js";
 import { Select } from "../components/Select.jsx";
 
 export function Datasets({ user, notify, wrap, refreshMe }) {
   const [datasets, setDatasets] = useState([]);
   const [schema, setSchema] = useState(null);
+  const [schemaTab, setSchemaTab] = useState("fields"); // fields | preview
+  const [preview, setPreview] = useState(null);
+  const [accessModal, setAccessModal] = useState(null); // { name, users }
   const [confirmDel, setConfirmDel] = useState(null);
   const [form, setForm] = useState({ name: "", kind: "file", format: "csv", description: "", dsn: "", file: null });
 
@@ -32,6 +36,8 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
 
   const showSchema = wrap(async (name) => {
     setSchema({ name, loading: true });
+    setSchemaTab("fields");
+    setPreview(null);
     try {
       const s = await api.get(`/api/datasets/${name}/schema`);
       setSchema({ name, ...s });
@@ -39,6 +45,27 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
       setSchema(null);
       throw err;
     }
+  });
+
+  const showPreview = wrap(async (name) => {
+    setSchemaTab("preview");
+    if (preview?.name === name) return;
+    setPreview({ name, loading: true });
+    const p = await api.get(`/api/datasets/${name}/preview?rows=50`);
+    setPreview({ name, ...p });
+  });
+
+  const openAccess = wrap(async (name) => {
+    const a = await api.get(`/api/datasets/${name}/access`);
+    setAccessModal({ name, users: a.users });
+  });
+
+  const toggleAccess = wrap(async (username, grant) => {
+    await api.put(`/api/datasets/${accessModal.name}/access`, { username, grant });
+    const a = await api.get(`/api/datasets/${accessModal.name}/access`);
+    setAccessModal({ ...accessModal, users: a.users });
+    notify(grant ? `已授权 ${username}` : `已撤销 ${username}`);
+    refreshMe();
   });
 
   const remove = wrap(async (name) => {
@@ -129,8 +156,13 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="ghost" disabled={!d.authorized} onClick={() => showSchema(d.name)}>
-                  查看 schema
+                  schema / 预览
                 </button>
+                {isAdmin && (
+                  <button className="ghost" onClick={() => openAccess(d.name)}>
+                    授权
+                  </button>
+                )}
                 {isAdmin && (
                   <button className="ghost danger" onClick={() => setConfirmDel(d.name)}>
                     删除
@@ -154,24 +186,53 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                 <div className="muted" style={{ fontSize: 12.5, margin: "4px 0" }}>
                   {schema.schema.rowCount} 行 · {schema.schema.columns.length} 字段
                 </div>
-                <table className="schema-table">
-                  <thead>
-                    <tr>
-                      <th>字段</th>
-                      <th>类型</th>
-                      <th>取值示例</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schema.schema.columns.map((c) => (
-                      <tr key={c.name}>
-                        <td>{c.name}</td>
-                        <td>{c.type}</td>
-                        <td>{c.sampleValues?.join("、") || "—"}</td>
+                <div style={{ display: "flex", gap: 6, margin: "8px 0" }}>
+                  <button className={`ghost${schemaTab === "fields" ? " active-tab" : ""}`} onClick={() => setSchemaTab("fields")}>
+                    字段
+                  </button>
+                  <button className={`ghost${schemaTab === "preview" ? " active-tab" : ""}`} onClick={() => showPreview(schema.name)}>
+                    数据预览（前 50 行）
+                  </button>
+                </div>
+                {schemaTab === "fields" && (
+                  <table className="schema-table">
+                    <thead>
+                      <tr>
+                        <th>字段</th>
+                        <th>类型</th>
+                        <th>取值示例</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {schema.schema.columns.map((c) => (
+                        <tr key={c.name}>
+                          <td>{c.name}</td>
+                          <td>{c.type}</td>
+                          <td>{c.sampleValues?.join("、") || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {schemaTab === "preview" && (
+                  preview?.loading || preview?.name !== schema.name ? (
+                    <div className="skeleton" style={{ height: 120, marginTop: 8 }} />
+                  ) : (
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="schema-table">
+                        <thead>
+                          <tr>{preview.rows[0] && Object.keys(preview.rows[0]).map((k) => <th key={k}>{k}</th>)}</tr>
+                        </thead>
+                        <tbody>
+                          {preview.rows.map((r, i) => (
+                            <tr key={i}>{Object.values(r).map((v, j) => <td key={j}>{String(v ?? "")}</td>)}</tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {preview.truncated && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>仅显示前 50 行</div>}
+                    </div>
+                  )
+                )}
               </>
             )}
           </div>
@@ -189,6 +250,41 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
               <button className="primary" style={{ background: "var(--err)" }} onClick={() => remove(confirmDel)}>
                 确认删除
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {accessModal && (
+        <div className="modal-overlay" onClick={() => setAccessModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>数据集授权</h3>
+            <p style={{ marginBottom: 10 }}>
+              <b className="mono">{accessModal.name}</b> · admin 天然可见全部数据集
+            </p>
+            <table className="schema-table" style={{ fontFamily: "var(--sans)" }}>
+              <thead>
+                <tr><th>用户</th><th>角色</th><th style={{ width: 90 }}>已授权</th></tr>
+              </thead>
+              <tbody>
+                {accessModal.users.map((u) => (
+                  <tr key={u.username}>
+                    <td>{u.username}</td>
+                    <td className="muted">{u.role}</td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={u.granted}
+                        disabled={u.role === "admin"}
+                        onChange={(e) => toggleAccess(u.username, e.target.checked)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="inline-edit-actions">
+              <button className="primary" onClick={() => setAccessModal(null)}>完成</button>
             </div>
           </div>
         </div>

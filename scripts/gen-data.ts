@@ -66,6 +66,22 @@ mkdirSync("data/datasets", { recursive: true });
 writeFileSync(join("data/datasets", "sales_demo.csv"), rows.join("\n") + "\n");
 console.log(`wrote data/datasets/sales_demo.csv (${rows.length - 1} rows)`);
 
+// 第二个数据集：区域×月份 销售目标（供跨数据集关联分析演示：达成率 = 销售/目标）
+// 目标 ≈ 常态月销的 1.05 倍（不含 2025 大促脉冲），使"达标/未达标"有真实波动
+const targetRows: string[] = ["region,month,target_amount"];
+for (const ym of months("2025-01-01", "2026-08-01")) {
+  const [y, m] = ym.split("-").map(Number);
+  const seasonal = 1 + 0.12 * Math.sin(((m - 1) / 12) * 2 * Math.PI);
+  const yoyTarget = y === 2026 ? 1.1 : 1.0; // 2026 年目标定在常态的 +10%
+  for (const region of REGIONS) {
+    const base = region === "华东" ? 330000 : region === "华北" ? 310000 : region === "华南" ? 300000 : 300000;
+    const target = Math.round(base * seasonal * yoyTarget * (1 + (rand() - 0.5) * 0.04));
+    targetRows.push([region, ym, target].join(","));
+  }
+}
+writeFileSync(join("data/datasets", "region_targets.csv"), targetRows.join("\n") + "\n");
+console.log(`wrote data/datasets/region_targets.csv (${targetRows.length - 1} rows)`);
+
 function months(startISO: string, endISO: string): string[] {
   const out: string[] = [];
   const cur = new Date(startISO);

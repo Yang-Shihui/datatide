@@ -7,7 +7,7 @@ import { ThinkingBlock } from "../components/ThinkingBlock.jsx";
 
 const SKILL_RE = /^\/([a-z0-9-]+)(?:\s+([\s\S]*))?$/;
 
-export function Chat({ user, notify }) {
+export function Chat({ user, notify, wrap }) {
   const [sessions, setSessions] = useState([]);
   const [skills, setSkills] = useState([]);
   const [sessionId, setSessionId] = useState(null);
@@ -17,6 +17,8 @@ export function Chat({ user, notify }) {
   const [liveBlocks, setLiveBlocks] = useState([]);
   const [pickerIdx, setPickerIdx] = useState(-1); // -1 = 关闭
   const [editing, setEditing] = useState(null); // { id, text } 行内编辑中的用户消息
+  const [renaming, setRenaming] = useState(null); // { id, text }
+  const [deleting, setDeleting] = useState(null); // session id
   const inputRef = useRef(null);
   const abortRef = useRef(null);
   const stickToBottomRef = useRef(true);
@@ -80,6 +82,23 @@ export function Chat({ user, notify }) {
   };
 
   const refreshSessions = () => api.get("/api/sessions").then(setSessions).catch(() => {});
+
+  const renameSession = wrap(async (id, title) => {
+    await api.patch(`/api/sessions/${id}`, { title: title.trim() });
+    setRenaming(null);
+    refreshSessions();
+  });
+
+  const deleteSession = wrap(async (id) => {
+    await api.delete(`/api/sessions/${id}`);
+    setDeleting(null);
+    if (sessionId === id) {
+      setSessionId(null);
+      setMessages([]);
+    }
+    refreshSessions();
+    notify("会话已删除");
+  });
 
   const send = async (textArg, editMessageId) => {
     const raw = (textArg ?? input).trim();
@@ -278,11 +297,61 @@ export function Chat({ user, notify }) {
         <button className="ghost new" onClick={newSession}>
           ＋ 新对话
         </button>
-        {sessions.map((s) => (
-          <div key={s.id} className={`session-item${s.id === sessionId ? " active" : ""}`} onClick={() => openSession(s.id)}>
-            {s.title}
-          </div>
-        ))}
+        {sessions.map((s) =>
+          renaming?.id === s.id ? (
+            <form
+              key={s.id}
+              className="session-rename"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (renaming.text.trim()) renameSession(s.id, renaming.text);
+                else setRenaming(null);
+              }}
+            >
+              <input
+                value={renaming.text}
+                autoFocus
+                onChange={(e) => setRenaming({ ...renaming, text: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setRenaming(null);
+                }}
+              />
+              <button type="submit" className="primary">✓</button>
+            </form>
+          ) : (
+            <div key={s.id} className={`session-item${s.id === sessionId ? " active" : ""}`} onClick={() => openSession(s.id)}>
+              {s.title}
+              <span className="session-actions">
+                <button
+                  type="button"
+                  title="重命名"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenaming({ id: s.id, text: s.title });
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  title="删除会话"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleting(s.id);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </span>
+            </div>
+          ),
+        )}
       </aside>
       <div className="chat-pane">
         <div className="messages" onScroll={onScroll}>
@@ -359,6 +428,20 @@ export function Chat({ user, notify }) {
           )}
         </div>
       </div>
+      {deleting != null && (
+        <div className="modal-overlay" onClick={() => setDeleting(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>删除会话</h3>
+            <p>会话及其全部消息将被删除，不可恢复。</p>
+            <div className="inline-edit-actions">
+              <button type="button" className="ghost" onClick={() => setDeleting(null)}>取消</button>
+              <button type="button" className="primary" style={{ background: "var(--err)" }} onClick={() => deleteSession(deleting)}>
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

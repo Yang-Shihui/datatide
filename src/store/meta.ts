@@ -90,6 +90,22 @@ export class MetaStore {
         output_path TEXT,
         error TEXT
       );
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        username TEXT NOT NULL,
+        action TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE TABLE IF NOT EXISTS usage_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        username TEXT NOT NULL,
+        session_id INTEGER,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE IF NOT EXISTS auth_sessions (
         token_hash TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -250,6 +266,61 @@ export class MetaStore {
     return this.db
       .prepare("SELECT id, role, content, extras_json, created_at FROM chat_messages WHERE session_id = ? ORDER BY id")
       .all(sessionId) as { id: number; role: string; content: string; extras_json: string | null; created_at: string }[];
+  }
+
+  renameChatSession(id: number, title: string): void {
+    this.db
+      .prepare("UPDATE chat_sessions SET title = ?, updated_at = ? WHERE id = ?")
+      .run(title, new Date().toISOString(), id);
+  }
+
+  deleteChatSession(id: number): void {
+    this.db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(id); // messages 级联删除
+  }
+
+  // ---- 审计日志 ----
+
+  audit(username: string, action: string, detail: Record<string, unknown> = {}): void {
+    this.db
+      .prepare("INSERT INTO audit_log (username, action, detail) VALUES (?, ?, ?)")
+      .run(username, action, JSON.stringify(detail));
+  }
+
+  listAudit(limit = 200): { id: number; ts: string; username: string; action: string; detail: string }[] {
+    return this.db
+      .prepare("SELECT id, ts, username, action, detail FROM audit_log ORDER BY id DESC LIMIT ?")
+      .all(limit) as { id: number; ts: string; username: string; action: string; detail: string }[];
+  }
+
+  // ---- token 用量 ----
+
+  recordUsage(username: string, sessionId: number | null, inputTokens: number, outputTokens: number, totalTokens: number): void {
+    this.db
+      .prepare("INSERT INTO usage_events (username, session_id, input_tokens, output_tokens, total_tokens) VALUES (?, ?, ?, ?, ?)")
+      .run(username, sessionId, inputTokens, outputTokens, totalTokens);
+  }
+
+  usageStats(): {
+    totals: { input: number; output: number; total: number; turns: number };
+    byUser: { username: string; input: number; output: number; total: number; turns: number }[];
+    byDay: { day: string; total: number }[];
+  } {
+    const totals = (
+      this.db
+        .prepare("SELECT COALESCE(SUM(input_tokens),0) i, COALESCE(SUM(output_tokens),0) o, COALESCE(SUM(total_tokens),0) t, COUNT(*) n FROM usage_events")
+        .get() as { i: number; o: number; t: number; n: number }
+    );
+    const byUser = this.db
+      .prepare(
+        "SELECT username, COALESCE(SUM(input_tokens),0) input, COALESCE(SUM(output_tokens),0) output, COALESCE(SUM(total_tokens),0) total, COUNT(*) turns FROM usage_events GROUP BY username ORDER BY total DESC",
+      )
+      .all() as { username: string; input: number; output: number; total: number; turns: number }[];
+    const byDay = this.db
+      .prepare(
+        "SELECT substr(ts,1,10) day, COALESCE(SUM(total_tokens),0) total FROM usage_events GROUP BY substr(ts,1,10) ORDER BY day DESC LIMIT 30",
+      )
+      .all() as { day: string; total: number }[];
+    return { totals: { input: totals.i, output: totals.o, total: totals.t, turns: totals.n }, byUser, byDay };
   }
 
   // ---- reports ----
