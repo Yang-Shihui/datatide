@@ -40,22 +40,32 @@ export function Chat({ user, notify }) {
 
   const openSession = async (id) => {
     if (busy) return;
+    const prevSessionId = sessionId;
     turnSeqRef.current += 1; // 使在途 finalize 失效
     setEditing(null);
     setSessionId(id);
     try {
       const msgs = await api.get(`/api/sessions/${id}/messages`);
       setMessages(
-        msgs.map((m) => ({
-          id: m.id,
-          role: m.role,
-          text: m.content,
-          charts: m.role === "assistant" ? JSON.parse(m.extras_json || "{}").charts || [] : [],
-          thinking: m.role === "assistant" ? JSON.parse(m.extras_json || "{}").thinking || "" : "",
-        })),
+        msgs.map((m) => {
+          let extras = {};
+          try {
+            extras = m.role === "assistant" ? JSON.parse(m.extras_json || "{}") : {};
+          } catch {
+            extras = {};
+          }
+          return {
+            id: m.id,
+            role: m.role,
+            text: m.content,
+            charts: extras.charts || [],
+            thinking: extras.thinking || "",
+          };
+        }),
       );
       stickToBottomRef.current = true;
     } catch (err) {
+      setSessionId(prevSessionId); // 加载失败回退高亮，不留“高亮了却没内容”的悬空态
       notify(err.message, true);
     }
   };

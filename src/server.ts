@@ -273,6 +273,9 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     if (ctx.busy.has(id)) return res.status(409).json({ error: "会话正在处理中，无法回退" });
     const messageId = Number((req.body as { message_id?: number }).message_id);
     if (!Number.isInteger(messageId)) return res.status(400).json({ error: "message_id 不能为空" });
+    // 必须是本会话的消息（id 是全局自增，裸传会误删其他会话的消息）
+    const target = meta.getMessage(messageId);
+    if (!target || target.session_id !== id) return res.status(400).json({ error: "消息不存在" });
     const removed = meta.truncateMessagesFrom(id, messageId);
     // 内存 agent 一并销毁：被截断的对话不能残留在上下文里
     const agent = ctx.agents.get(id);
