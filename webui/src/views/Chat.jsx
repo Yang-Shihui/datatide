@@ -15,22 +15,23 @@ export function Chat({ user, notify, wrap }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [liveBlocks, setLiveBlocks] = useState([]);
-  const [pickerIdx, setPickerIdx] = useState(-1); // -1 = 关闭
-  const [editing, setEditing] = useState(null); // { id, text } 行内编辑中的用户消息
-  const [renaming, setRenaming] = useState(null); // { id, text }
-  const [deleting, setDeleting] = useState(null); // session id
+  const [pickerIdx, setPickerIdx] = useState(-1);
+  const [pickerDismissed, setPickerDismissed] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [renaming, setRenaming] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem("datatide-sidebar") !== "0");
   const inputRef = useRef(null);
   const abortRef = useRef(null);
   const stickToBottomRef = useRef(true);
   const bottomRef = useRef(null);
-  const turnSeqRef = useRef(0); // 会话/轮次代际：finalize 完成时若代际已变则丢弃结果
+  const turnSeqRef = useRef(0);
 
   useEffect(() => {
     api.get("/api/sessions").then(setSessions).catch(() => {});
     api.get("/api/skills").then(setSkills).catch(() => {});
   }, []);
 
-  // 智能滚动：仅当用户贴底时跟随，向上翻历史不打扰
   useEffect(() => {
     if (stickToBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, liveBlocks]);
@@ -43,8 +44,9 @@ export function Chat({ user, notify, wrap }) {
   const openSession = async (id) => {
     if (busy) return;
     const prevSessionId = sessionId;
-    turnSeqRef.current += 1; // 使在途 finalize 失效
+    turnSeqRef.current += 1;
     setEditing(null);
+    setPickerDismissed(false);
     setSessionId(id);
     try {
       const msgs = await api.get(`/api/sessions/${id}/messages`);
@@ -67,7 +69,7 @@ export function Chat({ user, notify, wrap }) {
       );
       stickToBottomRef.current = true;
     } catch (err) {
-      setSessionId(prevSessionId); // 加载失败回退高亮，不留“高亮了却没内容”的悬空态
+      setSessionId(prevSessionId);
       notify(err.message, true);
     }
   };
@@ -76,12 +78,20 @@ export function Chat({ user, notify, wrap }) {
     if (busy) return;
     turnSeqRef.current += 1;
     setEditing(null);
+    setPickerDismissed(false);
     setSessionId(null);
     setMessages([]);
     stickToBottomRef.current = true;
   };
 
   const refreshSessions = () => api.get("/api/sessions").then(setSessions).catch(() => {});
+
+  const toggleSidebar = () => {
+    setSidebarOpen((v) => {
+      localStorage.setItem("datatide-sidebar", v ? "0" : "1");
+      return !v;
+    });
+  };
 
   const renameSession = wrap(async (id, title) => {
     await api.patch(`/api/sessions/${id}`, { title: title.trim() });
@@ -103,12 +113,12 @@ export function Chat({ user, notify, wrap }) {
   const send = async (textArg, editMessageId) => {
     const raw = (textArg ?? input).trim();
     if (!raw || busy) return;
-    if (!textArg) setInput(""); // 从建议 chips 发送时不清掉用户草稿
+    if (!textArg) setInput("");
     setPickerIdx(-1);
     setEditing(null);
+    setPickerDismissed(false);
     stickToBottomRef.current = true;
 
-    // /技能名 问题 → 显式调用技能
     let skill;
     let question = raw;
     const m = SKILL_RE.exec(raw);
@@ -119,7 +129,6 @@ export function Chat({ user, notify, wrap }) {
 
     turnSeqRef.current += 1;
     const mySeq = turnSeqRef.current;
-    console.log("[dbg] send start", raw.slice(0, 20), "mySeq", mySeq, "sessionId", sessionId);
     setBusy(true);
     setMessages((prev) => [...prev, { role: "user", text: raw }]);
     const blocks = [{ text: "", trace: [], charts: [] }];
@@ -152,11 +161,10 @@ export function Chat({ user, notify, wrap }) {
         controller.signal,
       );
     } catch (err) {
-      console.log("[dbg] postSSE catch:", String(err).slice(0, 120));
       if (!String(err).includes("abort")) notify(err.message, true);
     }
     abortRef.current = null;
-    console.log("[dbg] postSSE finished, finalizing");
+    setBusy(false);
 
     // 回合结束后以服务端持久化消息为准（本地追加的消息没有 id，编辑重发/截断需要 id）。
     // liveBlocks 先不清空：等 refetch 成功再替换，避免回答在慢网络上闪烁消失。
@@ -218,7 +226,6 @@ export function Chat({ user, notify, wrap }) {
     }
   };
 
-  /** 行内编辑：点"编辑"不动任何消息；提交后该轮替换重生成，之前的轮次与上下文原样保留 */
   const startEdit = (msg) => {
     if (busy) return;
     setEditing({ id: msg.id, text: msg.text.replace(/^\/skill:([a-z0-9-]+)\s*/, "/$1 ") });
@@ -230,13 +237,11 @@ export function Chat({ user, notify, wrap }) {
       notify("要编辑的消息已不存在（会话可能被其他窗口修改）", true);
       return;
     }
-    setMessages(messages.slice(0, idx)); // 乐观移除旧轮次，其余消息与上下文不动
+    setMessages(messages.slice(0, idx));
     stickToBottomRef.current = true;
     void send(newText, msgId);
   };
 
-  // "/" 技能面板：输入是以 / 开头的纯命令 token（还没打空格）时弹出；Esc 可关闭直到输入变化
-  const [pickerDismissed, setPickerDismissed] = useState(false);
   const pickerQuery = /^\/([a-z0-9-]*)$/.exec(input) ? input.slice(1) : null;
   const pickerSkills =
     pickerQuery === null
@@ -247,6 +252,7 @@ export function Chat({ user, notify, wrap }) {
   const applySkill = (name) => {
     setInput(`/${name} `);
     setPickerIdx(-1);
+    setPickerDismissed(false);
     inputRef.current?.focus();
   };
 
@@ -254,6 +260,9 @@ export function Chat({ user, notify, wrap }) {
     setInput(e.target.value);
     setPickerIdx(-1);
     setPickerDismissed(false);
+    const el = e.target;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
   };
 
   const onKeyDown = (e) => {
@@ -292,8 +301,20 @@ export function Chat({ user, notify, wrap }) {
   ];
 
   return (
-    <div className="chat-layout">
-      <aside className="session-list">
+    <div className={`chat-layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
+      <button
+        type="button"
+        className="sidebar-toggle"
+        title={sidebarOpen ? "收起侧栏" : "展开侧栏"}
+        onClick={toggleSidebar}
+        style={{ position: "absolute", left: sidebarOpen ? 252 : 12, top: 10, zIndex: 30, background: "var(--panel)", border: "1px solid var(--border)" }}
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M9 3v18" />
+        </svg>
+      </button>
+      <aside className="sidebar session-list">
         <button className="ghost new" onClick={newSession}>
           ＋ 新对话
         </button>
@@ -355,77 +376,88 @@ export function Chat({ user, notify, wrap }) {
       </aside>
       <div className="chat-pane">
         <div className="messages" onScroll={onScroll}>
-          {blocks.length === 0 && (
-            <div className="empty-center">
-              <div className="title">问点数据问题</div>
-              <div className="suggestions">
-                {[
-                  "华东区2026年7-8月销售额同比如何？可能是什么原因？",
-                  "2026年各区域销售额占比",
-                  "对比线上和线下渠道的月度趋势",
-                ].map((q) => (
-                  <button key={q} className="suggestion-chip" onClick={() => send(q)}>
-                    {q}
+          <div className="chat-column">
+            {blocks.length === 0 && (
+              <div className="empty-center">
+                <div className="title">问点数据问题</div>
+                <div className="suggestions">
+                  {[
+                    "华东区2026年7-8月销售额同比如何？可能是什么原因？",
+                    "2026年各区域销售额占比",
+                    "对比线上和线下渠道的月度趋势",
+                  ].map((q) => (
+                    <button key={q} className="suggestion-chip" onClick={() => send(q)}>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  输入 / 可唤起分析技能
+                </div>
+              </div>
+            )}
+            {blocks.map((b, i) => (
+              <MessageBlock
+                key={b.id ?? `live-${i}`}
+                block={b}
+                onCopy={copyMessage}
+                onEdit={busy ? undefined : startEdit}
+                editing={editing}
+                onSubmitEdit={submitEdit}
+                onCancelEdit={() => setEditing(null)}
+              />
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+        <div className="composer-area">
+          <div className="composer">
+            {pickerOpen && (
+              <div className="skill-picker" role="listbox">
+                <div className="skill-picker-head">分析技能</div>
+                {pickerSkills.map((s, i) => (
+                  <button
+                    key={s.name}
+                    type="button"
+                    role="option"
+                    aria-selected={i === pickerIdx}
+                    className={`skill-option${i === pickerIdx ? " active" : ""}`}
+                    onMouseEnter={() => setPickerIdx(i)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      applySkill(s.name);
+                    }}
+                  >
+                    <span className="skill-name">/{s.name}</span>
+                    <span className="skill-desc">{s.description}</span>
                   </button>
                 ))}
               </div>
-              <div className="muted" style={{ fontSize: 13 }}>
-                输入 / 可唤起分析技能
-              </div>
-            </div>
-          )}
-          {blocks.map((b, i) => (
-            <MessageBlock
-              key={b.id ?? `live-${i}`}
-              block={b}
-              onCopy={copyMessage}
-              onEdit={busy ? undefined : startEdit}
-              editing={editing}
-              onSubmitEdit={submitEdit}
-              onCancelEdit={() => setEditing(null)}
+            )}
+            <textarea
+              ref={inputRef}
+              value={input}
+              rows={1}
+              placeholder="向数据分析助手提问… 输入 / 唤起技能"
+              onChange={onInputChange}
+              onKeyDown={onKeyDown}
             />
-          ))}
-          <div ref={bottomRef} />
-        </div>
-        <div className="composer">
-          {pickerOpen && (
-            <div className="skill-picker" role="listbox">
-              <div className="skill-picker-head">分析技能</div>
-              {pickerSkills.map((s, i) => (
-                <button
-                  key={s.name}
-                  type="button"
-                  role="option"
-                  aria-selected={i === pickerIdx}
-                  className={`skill-option${i === pickerIdx ? " active" : ""}`}
-                  onMouseEnter={() => setPickerIdx(i)}
-                  onMouseDown={(e) => {
-                    e.preventDefault(); // 防止 textarea 失焦
-                    applySkill(s.name);
-                  }}
-                >
-                  <span className="skill-name">/{s.name}</span>
-                  <span className="skill-desc">{s.description}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <textarea
-            ref={inputRef}
-            value={input}
-            placeholder="向数据分析助手提问… 输入 / 唤起技能"
-            onChange={onInputChange}
-            onKeyDown={onKeyDown}
-          />
-          {busy ? (
-            <button className="ghost stop" onClick={stop}>
-              停止
-            </button>
-          ) : (
-            <button className="primary" onClick={() => send()} disabled={!input.trim()}>
-              发送
-            </button>
-          )}
+            {busy ? (
+              <button className="send-btn stop-btn" title="停止生成" onClick={stop}>
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button className="send-btn" title="发送" onClick={() => send()} disabled={!input.trim()}>
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5" />
+                  <path d="m5 12 7-7 7 7" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <div className="composer-hint">AI 可能会出错，请核对重要数据。</div>
         </div>
       </div>
       {deleting != null && (
@@ -471,14 +503,12 @@ function MessageBlock({ block, onCopy, onEdit, editing, onSubmitEdit, onCancelEd
                   <rect x="9" y="9" width="13" height="13" rx="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                复制
               </button>
               {block.role === "user" && !block.live && block.id != null && onEdit && editing?.id !== block.id && (
                 <button type="button" title="编辑并重新生成回答（之前的消息不受影响）" onClick={() => onEdit(block)}>
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                   </svg>
-                  编辑
                 </button>
               )}
             </span>
