@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, postSSE } from "../api.js";
 import { ChartBox } from "../components/ChartBox.jsx";
 import { TableExports } from "../components/TableExports.jsx";
@@ -21,6 +21,8 @@ export function Chat({ user, notify, wrap }) {
   const [renaming, setRenaming] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem("datatide-sidebar") !== "0");
+  const [activeTurn, setActiveTurn] = useState(-1); // 滚动位置对应的用户轮次（blocks 下标）
+  const [turnNavHover, setTurnNavHover] = useState(false);
   const inputRef = useRef(null);
   const abortRef = useRef(null);
   const stickToBottomRef = useRef(true);
@@ -46,6 +48,13 @@ export function Chat({ user, notify, wrap }) {
   const onScroll = (e) => {
     const el = e.currentTarget;
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+    // 滚动监听：当前视口顶部最近的用户轮次
+    const top = el.getBoundingClientRect().top;
+    let active = -1;
+    el.querySelectorAll("[data-turn-idx]").forEach((n) => {
+      if (n.getBoundingClientRect().top - top < 130) active = Number(n.dataset.turnIdx);
+    });
+    setActiveTurn(active);
   };
 
   const openSession = async (id) => {
@@ -230,6 +239,10 @@ export function Chat({ user, notify, wrap }) {
 
   const stop = () => {
     abortRef.current?.abort();
+  };
+
+  const jumpToTurn = (idx) => {
+    document.querySelector(`[data-turn-idx="${idx}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const copyMessage = async (text) => {
@@ -429,6 +442,7 @@ export function Chat({ user, notify, wrap }) {
               <MessageBlock
                 key={b.id ?? `live-${i}`}
                 block={b}
+                turnIdx={i}
                 onCopy={copyMessage}
                 onEdit={busy ? undefined : startEdit}
                 editing={editing}
@@ -488,6 +502,41 @@ export function Chat({ user, notify, wrap }) {
           </div>
           <div className="composer-hint">AI 可能会出错，请核对重要数据。</div>
         </div>
+        {(() => {
+          const userTurns = blocks
+            .map((b, i) => ({ i, text: (b.text || "").replace(/\s+/g, " ").trim().slice(0, 60) }))
+            .filter((t) => blocks[t.i].role === "user");
+          if (userTurns.length < 2) return null;
+          return (
+            <div className="turn-nav-wrap" onMouseEnter={() => setTurnNavHover(true)} onMouseLeave={() => setTurnNavHover(false)}>
+              {turnNavHover && (
+                <div className="turn-pop">
+                  {userTurns.map((t) => (
+                    <button
+                      key={t.i}
+                      type="button"
+                      className={`turn-pop-item${activeTurn === t.i ? " active" : ""}`}
+                      onClick={() => jumpToTurn(t.i)}
+                    >
+                      {t.text || "（无文本）"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="turn-strip">
+                {userTurns.map((t) => (
+                  <button
+                    key={t.i}
+                    type="button"
+                    title={t.text}
+                    className={`turn-dash${activeTurn === t.i ? " active" : ""}`}
+                    onClick={() => jumpToTurn(t.i)}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
       {deleting != null && (
         <div className="modal-overlay" onClick={() => setDeleting(null)}>
@@ -507,7 +556,7 @@ export function Chat({ user, notify, wrap }) {
   );
 }
 
-function MessageBlock({ block, onCopy, onEdit, editing, onSubmitEdit, onCancelEdit }) {
+function MessageBlock({ block, onCopy, onEdit, editing, onSubmitEdit, onCancelEdit, turnIdx }) {
   return (
     <>
       {block.trace?.length > 0 && (
@@ -522,7 +571,7 @@ function MessageBlock({ block, onCopy, onEdit, editing, onSubmitEdit, onCancelEd
           })}
         </div>
       )}
-      <div className={`msg ${block.role}`}>
+      <div className={`msg ${block.role}`} data-turn-idx={block.role === "user" ? turnIdx : undefined}>
         <div className="bubble">
           {editing != null && block.id != null && editing.id === block.id ? (
             <InlineEdit

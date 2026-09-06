@@ -276,6 +276,30 @@ label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 5px
 }
 .sidebar-toggle:hover { background: var(--panel-2); color: var(--text); }
 .chat-pane { position: relative; }
+/* 右侧轮次导航（DeepSeek 式） */
+.turn-nav-wrap { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); z-index: 20; }
+.turn-strip { display: flex; flex-direction: column; gap: 10px; align-items: flex-end; padding: 4px 2px; }
+.turn-dash {
+  width: 14px; height: 3px; border-radius: 2px; padding: 0;
+  background: var(--border); border: none; cursor: pointer;
+  transition: background 150ms ease, width 150ms ease;
+}
+.turn-dash:hover { background: var(--faint); }
+.turn-dash.active { background: var(--primary); width: 22px; }
+.turn-pop {
+  position: absolute; right: 26px; top: 50%; transform: translateY(-50%);
+  width: 300px; max-height: 56vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-lift); padding: 5px;
+}
+.turn-pop-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 12.5px; font-family: inherit;
+  padding: 7px 10px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.turn-pop-item:hover { background: var(--bg); color: var(--text); }
+.turn-pop-item.active { color: var(--primary); background: var(--primary-soft); font-weight: 500; }
 .sidebar-toggle-float {
   position: absolute; top: 14px; left: 14px; z-index: 30;
   background: var(--panel); border: 1px solid var(--border);
