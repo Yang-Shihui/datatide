@@ -304,6 +304,9 @@ export function Chat({ user, notify, wrap }) {
     <div className={`chat-layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
       <aside className="sidebar session-list">
         <div className="sidebar-head">
+          <button className="ghost new sidebar-new" onClick={newSession}>
+            ＋ 新对话
+          </button>
           <button
             type="button"
             className="sidebar-toggle"
@@ -314,9 +317,6 @@ export function Chat({ user, notify, wrap }) {
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <path d="M9 3v18" />
             </svg>
-          </button>
-          <button className="ghost new sidebar-new" onClick={newSession}>
-            ＋ 新对话
           </button>
         </div>
         {sessions.map((s) =>

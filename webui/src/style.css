@@ -157,6 +157,11 @@ select:hover { border-color: var(--faint); }
 /* ---- 表单行：所有控件统一 40px 高，底对齐 ---- */
 .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .form-row .field { min-width: 0; }
+.field-label {
+  display: block; color: var(--muted); font-size: 13px;
+  height: 20px; line-height: 20px; margin: 0 0 6px;
+}
+.form-row label { height: 20px; line-height: 20px; margin: 0 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .form-row input,
 .form-row select,
 .form-row .select,
@@ -201,6 +206,10 @@ input:hover, textarea:hover, select:hover { border-color: var(--faint); }
 /* ---- 表单行：所有控件统一 40px 高，底对齐 ---- */
 .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .form-row .field { min-width: 0; }
+.field-label {
+  display: block; color: var(--muted); font-size: 13px;
+  height: 20px; line-height: 20px; margin: 0 0 6px;
+}
 .form-row input,
 .form-row select,
 .form-row .select,
@@ -257,6 +266,7 @@ label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 5px
 }
 .chat-layout.sidebar-collapsed .sidebar { margin-left: -241px; }
 .sidebar-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.session-list .sidebar-head .sidebar-new { margin: 0; height: 34px; padding: 0 14px; }
 .sidebar-head .sidebar-new { flex: 1; }
 .sidebar-toggle {
   display: inline-flex; align-items: center; justify-content: center;

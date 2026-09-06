@@ -116,8 +116,8 @@ export function Datasets({ user, notify, wrap, refreshMe }) {
                       ariaLabel="文件格式"
                     />
                   </div>
-                  <div>
-                    <label>文件（≤64MB，Excel 取第一个 sheet）</label>
+                  <div className="field">
+                    <div className="field-label">文件（≤64MB）</div>
                     <label className={`file-button${form.file ? " has-file" : ""}`}>
                       {form.file ? form.file.name : "选择 CSV / Parquet / Excel 文件"}
                       <input
