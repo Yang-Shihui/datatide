@@ -62,6 +62,7 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     registry,
     skills,
     mcp,
+    timezone: process.env.DATATIDE_TZ,
     reportsDir,
     modelSpec: process.env.DATATIDE_MODEL,
   });
@@ -77,7 +78,9 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
 
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "64mb" }));
+  // 数据集上传需要大 body；其余路由（含登录）只给 1mb，缩小 DoS 面
+  app.use("/api/datasets", express.json({ limit: "64mb" }));
+  app.use(express.json({ limit: "1mb" }));
 
   // ---- auth ----
   app.post("/auth/register", (req, res) => guard(res, () => {
@@ -235,16 +238,16 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
       session_id?: number; message: string; skill?: string; edit_message_id?: number;
     };
     if (!message?.trim()) return res.status(400).json({ error: "message 不能为空" });
-    let skillBody: string | undefined;
+    let skill: { name: string; body: string } | undefined;
     if (skillName) {
-      const skill = ctx.skills.get(skillName);
-      if (!skill) {
+      const sk = ctx.skills.get(skillName);
+      if (!sk) {
         return res.status(400).json({
           error: `技能 ${skillName} 不存在`,
-          skills: ctx.skills.list().map((s) => s.name),
+          skills: ctx.skills.list().map((x) => x.name),
         });
       }
-      skillBody = ctx.skills.loadBody(skillName);
+      skill = { name: sk.name, body: ctx.skills.loadBody(sk.name) };
     }
 
     if (meta.datasetsForUser(user).length === 0) return res.status(400).json({ error: "当前用户没有被授权任何数据集" });
@@ -254,7 +257,7 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
     ctx.busy.add(id); // 在任何 await 之前占住会话，防止并发请求交错（TOCTOU）
 
     try {
-      await runChatTurn(ctx, req, res, user, id, message, skillName ? { name: skillName, body: skillBody! } : undefined, editMessageId != null ? Number(editMessageId) : undefined);
+      await runChatTurn(ctx, req, res, user, id, message, skill, editMessageId != null ? Number(editMessageId) : undefined);
     } finally {
       ctx.busy.delete(id);
     }
@@ -279,6 +282,12 @@ export async function createServer(opts: { staticDir?: string; reportsDir?: stri
       const target = meta.getMessage(editMessageId);
       if (!target || target.session_id !== id) return res.status(400).json({ error: "要编辑的消息不存在" });
       if (target.role !== "user") return res.status(400).json({ error: "只能编辑用户消息" });
+      // API 直调编辑技能消息时，还原消息原本挂载的技能（网页端通过 /name 前缀自行传递）
+      const storedSkill = /^\/skill:([a-z0-9-]+)\s/.exec(target.content)?.[1];
+      if (storedSkill && !skill) {
+        const restored = ctx.skills.get(storedSkill);
+        if (restored) skill = { name: restored.name, body: ctx.skills.loadBody(restored.name) };
+      }
       let piEntry: string | undefined;
       try {
         piEntry = JSON.parse(target.extras_json || "{}").piEntry;
@@ -542,12 +551,19 @@ async function startChat(
   const sm = agent.session.sessionManager;
   const beforeEntryIds = new Set(sm.getEntries().map((e) => e.id));
 
+  const trace: string[] = [];
   const onEvent = (event: TurnEvent) => {
     switch (event.type) {
       case "text": send("text", { delta: event.delta }); break;
       case "thinking": send("thinking", { delta: event.delta }); break;
-      case "tool_start": send("tool_start", { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args }); break;
-      case "tool_end": send("tool_end", { toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, result: event.result }); break;
+      case "tool_start":
+        trace.push(`▸ ${event.toolName}(${JSON.stringify(event.args ?? {}).slice(0, 90)})`);
+        send("tool_start", { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+        break;
+      case "tool_end":
+        trace.push(`${event.isError ? "✗ " : "✓ "}${event.toolName}`);
+        send("tool_end", { toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, result: event.result });
+        break;
       case "chart": send("chart", event.chart); break;
       case "error": send("error", { message: event.message }); break;
       case "done": break; // sent below after persistence
@@ -567,7 +583,7 @@ async function startChat(
       sessionId,
       "assistant",
       outcome.text,
-      JSON.stringify({ charts: outcome.charts, thinking: outcome.thinking, usage: outcome.usage }),
+      JSON.stringify({ charts: outcome.charts, thinking: outcome.thinking, usage: outcome.usage, trace }),
     );
     if (outcome.usage) {
       ctx.meta.recordUsage(

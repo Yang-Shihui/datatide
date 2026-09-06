@@ -10,6 +10,8 @@ import { createAnalysisSession } from "../agent/agent.ts";
 import { runTurn } from "../agent/runner.ts";
 
 export interface SchedulerDeps {
+  /** cron 调度时区（IANA 名称，默认 Asia/Shanghai——否则容器 UTC 会让用户配的 9 点在 17 点跑） */
+  timezone?: string;
   meta: MetaStore;
   engine: Engine;
   registry: DatasetRegistry;
@@ -43,11 +45,15 @@ export class ReportScheduler {
     if (!cron.validate(config.cron)) {
       throw new Error(`cron 表达式不合法: ${config.cron}`);
     }
-    const task = cron.schedule(config.cron, () => {
-      this.runNow(config.id).catch((err) => {
-        console.error(`[report] config ${config.id} 运行失败:`, err instanceof Error ? err.message : err);
-      });
-    });
+    const task = cron.schedule(
+      config.cron,
+      () => {
+        this.runNow(config.id).catch((err) => {
+          console.error(`[report] config ${config.id} 运行失败:`, err instanceof Error ? err.message : err);
+        });
+      },
+      { timezone: this.deps.timezone ?? "Asia/Shanghai" },
+    );
     this.tasks.set(config.id, task);
   }
 

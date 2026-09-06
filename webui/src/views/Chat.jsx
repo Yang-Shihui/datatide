@@ -64,6 +64,7 @@ export function Chat({ user, notify, wrap }) {
             text: m.content,
             charts: extras.charts || [],
             thinking: extras.thinking || "",
+            trace: extras.trace || [],
           };
         }),
       );
@@ -182,6 +183,7 @@ export function Chat({ user, notify, wrap }) {
           text: m.content,
           charts: extras.charts || [],
           thinking: extras.thinking || "",
+          trace: extras.trace || [],
         };
       };
       let fetched = null;

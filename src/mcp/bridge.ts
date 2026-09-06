@@ -145,6 +145,11 @@ export class McpBridge {
         fullName: `${server}__${t.name}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64),
         description: t.description ?? "",
       };
+      const existing = this.toolIndex.get(meta.fullName);
+      if (existing && (existing.server !== server || existing.tool !== t.name)) {
+        // 清洗后同名的工具会互相覆盖，静默不可用——响亮报错让管理员改名
+        throw new Error(`MCP 工具全名冲突：${meta.fullName}（${server}.${t.name} 与 ${existing.server}.${existing.tool} 清洗后同名），请修改 server 或工具命名`);
+      }
       this.toolIndex.set(meta.fullName, meta);
       metas.push(meta);
     }

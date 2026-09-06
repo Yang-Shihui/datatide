@@ -89,3 +89,27 @@ describe("McpBridge — stdio 假 server 全链路", () => {
     await expect(McpBridge.create({ mcpServers: { bad: {} } })).rejects.toThrow(/command（stdio）或 url/);
   });
 });
+
+describe("McpBridge — 工具全名碰撞", () => {
+  it("清洗后同名的 server 工具报冲突（响亮失败而非静默覆盖）", async () => {
+    const errSpy: string[] = [];
+    const orig = console.error;
+    console.error = (...a) => errSpy.push(a.join(" "));
+    try {
+      const bridge = await McpBridge.create({
+        mcpServers: {
+          "a.b": { command: "node", args: [FAKE, "--name", "one"] },
+          "a_b": { command: "node", args: [FAKE, "--name", "two"] },
+        },
+      });
+      // 两个 server 清洗后工具都叫 a_b__echo：后注册的应被拒绝，索引里只有先注册的
+      const listing = bridge.listAll();
+      const echoCount = (listing.match(/a_b__echo/g) || []).length;
+      expect(echoCount).toBeLessThanOrEqual(1);
+      expect(errSpy.some((s) => s.includes("冲突"))).toBe(true);
+      bridge.shutdown();
+    } finally {
+      console.error = orig;
+    }
+  });
+});
