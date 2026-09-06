@@ -28,7 +28,14 @@ export function Chat({ user, notify, wrap }) {
   const turnSeqRef = useRef(0);
 
   useEffect(() => {
-    api.get("/api/sessions").then(setSessions).catch(() => {});
+    api.get("/api/sessions")
+      .then((s) => {
+        setSessions(s);
+        // 恢复上次打开的会话（切页签会卸载本组件，靠 localStorage 记住位置）
+        const last = Number(localStorage.getItem("datatide-last-session"));
+        if (last && s.some((x) => x.id === last)) openSession(last);
+      })
+      .catch(() => {});
     api.get("/api/skills").then(setSkills).catch(() => {});
   }, []);
 
@@ -48,6 +55,7 @@ export function Chat({ user, notify, wrap }) {
     setEditing(null);
     setPickerDismissed(false);
     setSessionId(id);
+    localStorage.setItem("datatide-last-session", String(id));
     try {
       const msgs = await api.get(`/api/sessions/${id}/messages`);
       setMessages(
@@ -82,6 +90,7 @@ export function Chat({ user, notify, wrap }) {
     setPickerDismissed(false);
     setSessionId(null);
     setMessages([]);
+    localStorage.removeItem("datatide-last-session");
     stickToBottomRef.current = true;
   };
 
@@ -103,6 +112,7 @@ export function Chat({ user, notify, wrap }) {
   const deleteSession = wrap(async (id) => {
     await api.delete(`/api/sessions/${id}`);
     setDeleting(null);
+    localStorage.removeItem("datatide-last-session");
     if (sessionId === id) {
       setSessionId(null);
       setMessages([]);
@@ -193,7 +203,10 @@ export function Chat({ user, notify, wrap }) {
           const s = await api.get("/api/sessions");
           setSessions(s);
           sid = s[0]?.id;
-          if (sid != null) setSessionId(sid);
+          if (sid != null) {
+            setSessionId(sid);
+            localStorage.setItem("datatide-last-session", String(sid));
+          }
         }
         if (sid != null) fetched = await api.get(`/api/sessions/${sid}/messages`);
       } catch {
